@@ -75,10 +75,11 @@ with st.sidebar:
     st.title("🤖 Code Agent")
     st.caption("Final build · All 4 systems active · Zero cost")
     st.divider()
-    api_key = st.text_input("Groq API Key",
-        value=GROQ_API_KEY if GROQ_API_KEY!="your_groq_api_key_here" else "",
-        type="password", placeholder="gsk_...")
-    if not api_key: st.warning("Add your Groq key to start.")
+    api_key = GROQ_API_KEY
+
+    if not api_key:
+        st.error("Groq API key not configured in Streamlit secrets.")
+        st.stop()
     model = st.selectbox("Model", AVAILABLE_MODELS, index=0)
     c1,c2 = st.columns(2)
     max_retries  = c1.number_input("Fix retries", 1, 10, MAX_RETRIES)
