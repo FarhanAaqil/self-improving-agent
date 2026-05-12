@@ -2,7 +2,9 @@
 import os
 
 # ── LLM ──────────────────────────────────────────────────────
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "your-groq-api-key")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 MODEL = "llama-3.3-70b-versatile"
 AVAILABLE_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
