@@ -3,20 +3,23 @@
 # Run with: streamlit run app.py
 
 import streamlit as st
-import json, os, sys
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# ── Day 1: updated imports to use new app/ layout ──────────
+from app.sandbox import run_code
+from app.critique import critique_code
+from benchmark import benchmark_code, benchmark_memory_only, compare, log_benchmark
+from eval.evaluate import evaluate_all, run_agent, run_baseline
+from eval.humaneval_problems import PROBLEMS
+from app.config import GROQ_API_KEY, AVAILABLE_MODELS, MAX_RETRIES, MAX_CRITIQUE_ROUNDS, LOG_DIR, BENCHMARK_RUNS
+
+import json
 from datetime import datetime
 from groq import Groq
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sandbox import run_code
-from critique import critique_code
-from benchmark import benchmark_code, benchmark_memory_only, compare, log_benchmark
-from evaluate import evaluate_all, run_agent, run_baseline
-from humaneval_problems import PROBLEMS
-from config import GROQ_API_KEY, AVAILABLE_MODELS, MAX_RETRIES, MAX_CRITIQUE_ROUNDS, LOG_DIR, BENCHMARK_RUNS
-
 try:
-    from memory import store_failure, build_memory_context, retrieve_similar_failures, memory_stats, clear_memory
+    from app.memory import store_failure, build_memory_context, retrieve_similar_failures, memory_stats, clear_memory
     MEMORY_AVAILABLE = True
 except ImportError:
     MEMORY_AVAILABLE = False
