@@ -1,83 +1,151 @@
-# ── app/sandbox.py ──────────────────────────────────────────
-# Sandbox execution layer.
-# Moved from root sandbox.py into app/ with updated imports.
-#
-# NOTE: This version still uses subprocess.run() directly — the
-# UNSANDBOXED baseline. Day 2 replaces this entirely with a
-# Docker-based implementation using:
-#   --network none, --memory=256m, --cpus=0.5,
-#   --read-only, --tmpfs /tmp, host-side timeout.
-#
-# Do NOT add features here. This file is scheduled for full
-# rewrite on Day 2 — any changes here will be thrown away.
-
+import os
 import subprocess
 import sys
 import tempfile
-import os
+import time
+import uuid
 from app.config import SANDBOX_TIMEOUT
 
+SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "python:3.11-slim")
 
-def run_code(code: str) -> dict:
+
+def _is_docker_available() -> bool:
+    try:
+        res = subprocess.run(["docker", "info"], capture_output=True, timeout=3)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def _to_docker_volume_path(path: str) -> str:
+    # Windows drive paths (D:\foo\bar) must use forward slashes for Docker mounts
+    abs_path = os.path.abspath(path)
+    return abs_path.replace("\\", "/")
+
+
+def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
     """
-    Write code to a temp file and run it in a subprocess.
-
-    Returns a dict with:
-        success  (bool) — did it run without errors?
-        output   (str)  — stdout if success
-        error    (str)  — full traceback if failure
-        exit_code (int) — process exit code
-        latency_ms (int) — wall-clock time in milliseconds
-
-    TODO Day 2: replace this with Docker sandbox execution.
+    Executes Python code inside an isolated Docker container with zero network,
+    strict memory/CPU caps, and read-only filesystem.
+    Falls back to local subprocess if Docker daemon is not active.
     """
-    import time
-
-    # Windows defaults to cp1252; force utf-8 so unicode in generated code doesn't explode
+    # Windows note: force utf-8 so unicode symbols in LLM code don't fail with cp1252
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
         f.write(code)
-        tmp_path = f.name
+        tmp_script = f.name
+
+    try:
+        if not _is_docker_available():
+            return _run_subprocess_fallback(tmp_script, timeout)
+        return _run_docker(tmp_script, timeout)
+    finally:
+        if os.path.exists(tmp_script):
+            os.unlink(tmp_script)
+
+
+def _run_docker(script_path: str, timeout: int) -> dict:
+    container_name = f"sandbox-{uuid.uuid4().hex[:8]}"
+    volume_mount = f"{_to_docker_volume_path(script_path)}:/app/script.py:ro"
+
+    cmd = [
+        "docker", "run",
+        "--name", container_name,
+        "--rm",
+        "--network", "none",         # no outbound socket or network access
+        "--memory", "256m",          # hard cap; triggers OOM kill on abuse
+        "--cpus", "0.5",             # throttle CPU consumption
+        "--read-only",               # immutable root filesystem
+        "--tmpfs", "/tmp:rw,size=64m",  # only /tmp is scratch-writable
+        "-v", volume_mount,
+        "-w", "/app",
+        SANDBOX_IMAGE,
+        "python", "/app/script.py",
+    ]
 
     start = time.monotonic()
     try:
-        result = subprocess.run(
-            [sys.executable, tmp_path],
+        proc = subprocess.run(
+            cmd,
             capture_output=True,
             text=True,
-            timeout=SANDBOX_TIMEOUT,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
         )
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        if result.returncode == 0:
-            return {
-                "success": True,
-                "output": result.stdout.strip(),
-                "error": None,
-                "exit_code": 0,
-                "latency_ms": elapsed_ms,
-            }
-        else:
-            return {
-                "success": False,
-                "output": None,
-                "error": result.stderr.strip(),
-                "exit_code": result.returncode,
-                "latency_ms": elapsed_ms,
-            }
+        return {
+            "success": proc.returncode == 0,
+            "output": proc.stdout.strip() if proc.returncode == 0 else None,
+            "error": proc.stderr.strip() if proc.returncode != 0 else None,
+            "exit_code": proc.returncode,
+            "latency_ms": elapsed_ms,
+            "sandboxed": True,
+        }
 
+    except subprocess.TimeoutExpired:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        # Host-side enforcement: terminate container directly if it refuses to yield
+        subprocess.run(["docker", "kill", container_name], capture_output=True)
+        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+        return {
+            "success": False,
+            "output": None,
+            "error": f"Execution timed out after {timeout} seconds.",
+            "exit_code": -1,
+            "latency_ms": elapsed_ms,
+            "sandboxed": True,
+        }
+
+    except Exception as e:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return {
+            "success": False,
+            "output": None,
+            "error": str(e),
+            "exit_code": -1,
+            "latency_ms": elapsed_ms,
+            "sandboxed": True,
+        }
+
+
+def _run_subprocess_fallback(script_path: str, timeout: int) -> dict:
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return {
+            "success": proc.returncode == 0,
+            "output": proc.stdout.strip() if proc.returncode == 0 else None,
+            "error": proc.stderr.strip() if proc.returncode != 0 else None,
+            "exit_code": proc.returncode,
+            "latency_ms": elapsed_ms,
+            "sandboxed": False,
+        }
     except subprocess.TimeoutExpired:
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return {
             "success": False,
             "output": None,
-            "error": f"Execution timed out after {SANDBOX_TIMEOUT} seconds.",
+            "error": f"Execution timed out after {timeout} seconds.",
             "exit_code": -1,
             "latency_ms": elapsed_ms,
+            "sandboxed": False,
         }
-
     except Exception as e:
-        return {"success": False, "output": None, "error": str(e), "exit_code": -1, "latency_ms": 0}
-
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return {
+            "success": False,
+            "output": None,
+            "error": str(e),
+            "exit_code": -1,
+            "latency_ms": elapsed_ms,
+            "sandboxed": False,
+        }
