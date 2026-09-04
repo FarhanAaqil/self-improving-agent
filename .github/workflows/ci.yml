@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check .
+
+  # ── Unit tests (no API key, no Docker required) ─────────────
+  # Added progressively across days:
+  #   Day 3: test_sandbox_isolation.py
+  #   Day 7: test_loop_logic.py
+  #   Day 8: test_eval_scoring.py, test_memory_injection.py
+  #   Day 9: full suite wired here
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run unit tests (excluding integration)
+        run: pytest -m "not integration" -v
+
+  # ── Smoke eval (requires GROQ_API_KEY + Docker) ─────────────
+  # Added Day 9. Runs 8 HumanEval problems.
+  # Skipped gracefully in forks that don't have the secret.
+  smoke-eval:
+    name: Smoke eval (8 HumanEval problems)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: ${{ vars.GROQ_API_KEY != '' || secrets.GROQ_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run smoke eval
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          python scripts/smoke_eval.py --problems 8
+        continue-on-error: false   # fail the build on regression
+
+  # ── Full integration + eval (merge to main only) ─────────────
+  # Added Day 9. Runs full HumanEval subset and commits results.
+  integration:
+    name: Full integration (merge to main)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Full integration test (1 real HumanEval problem)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: pytest -m integration -v
+
+      - name: Full eval run (50 HumanEval problems)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python eval/humaneval_runner.py --problems 50

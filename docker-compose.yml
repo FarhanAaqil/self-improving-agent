@@ -1,0 +1,39 @@
+# docker-compose.yml
+# ─────────────────────────────────────────────────────────────
+# Orchestrates the FastAPI service container.
+# The per-execution sandbox containers are NOT defined here —
+# they are launched dynamically by app/sandbox.py via
+# subprocess("docker run ...") using the host Docker socket.
+#
+# ⚠️  SECURITY NOTE (documented, not hidden):
+#   The FastAPI service container mounts the host Docker socket
+#   (/var/run/docker.sock). This grants the service container
+#   Docker-daemon-equivalent privilege on the host — it can
+#   launch, inspect, and kill any container. This is the v1
+#   sibling-container approach described in the architecture doc
+#   Section 6. It is a deliberate, documented tradeoff, not an
+#   oversight. Cloud sandbox APIs (E2B, Modal) are a v2 option
+#   if the privilege surface becomes unacceptable.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - DB_PATH=/data/agent.db
+      - MEMORY_DIR=/data/memory_db
+      - DEMO_MODE=${DEMO_MODE:-false}
+    volumes:
+      # Host Docker socket — required for sibling-container sandbox execution.
+      # See security note above.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent data volume — SQLite DB + ChromaDB
+      - agent_data:/data
+    restart: unless-stopped
+
+volumes:
+  agent_data:

@@ -1,0 +1,54 @@
+# Planning docs — not part of the shipped repo
+new plan/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+logs/
+*.jsonl
+
+# ChromaDB local storage
+memory_db/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (for React frontend)
+node_modules/
+frontend/dist/
+frontend/.env
+
+# Results — intentionally committed, but ignore any local temp files
+results/*.tmp

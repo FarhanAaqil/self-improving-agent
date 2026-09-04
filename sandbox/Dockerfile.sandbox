@@ -1,0 +1,26 @@
+# sandbox/Dockerfile.sandbox
+# ─────────────────────────────────────────────────────────────
+# The execution sandbox for generated code.
+# This is the image that runs every generated Python script.
+#
+# Deliberately minimal — python:3.11-slim with NOTHING extra.
+# No pip packages, no tools, no shells beyond what the base provides.
+# Generated code may only use the Python standard library.
+#
+# Security flags applied by sandbox.py at runtime (NOT here):
+#   --network none      → no outbound network
+#   --memory=256m       → hard memory cap
+#   --cpus=0.5          → CPU throttle
+#   --read-only         → root filesystem read-only
+#   --tmpfs /tmp        → only /tmp is writable
+#   host-side timeout   → container killed from host if exceeded
+#
+# See app/sandbox.py (Day 2 rewrite) for the full docker run command.
+
+FROM python:3.11-slim
+
+# No pip installs. No extra tools. That is the point.
+WORKDIR /app
+
+# The generated script is mounted at runtime as /app/script.py:ro
+# CMD is set by the docker run call in sandbox.py, not here.
