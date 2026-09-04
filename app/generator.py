@@ -60,4 +60,18 @@ def generate_code(
         temperature=0.1,
         max_tokens=2048,
     )
-    return response.choices[0].message.content.strip()
+    raw = response.choices[0].message.content.strip()
+    return _clean_code(raw)
+
+
+def _clean_code(raw: str) -> str:
+    # Models occasionally wrap in ```python fences despite prompt instructions.
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text

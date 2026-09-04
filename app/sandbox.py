@@ -33,7 +33,8 @@ def run_code(code: str) -> dict:
     """
     import time
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+    # Windows defaults to cp1252; force utf-8 so unicode in generated code doesn't explode
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
         f.write(code)
         tmp_path = f.name
 
