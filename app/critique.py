@@ -8,7 +8,16 @@
 from groq import Groq
 from app.config import GROQ_API_KEY, MODEL
 
-client = Groq(api_key=GROQ_API_KEY)
+# Lazy — not instantiated at import time so the module is safe to import
+# in tests and CI environments without GROQ_API_KEY set.
+_default_client: Groq | None = None
+
+
+def _get_client() -> Groq:
+    global _default_client
+    if _default_client is None:
+        _default_client = Groq(api_key=GROQ_API_KEY)
+    return _default_client
 
 CRITIQUE_SYSTEM_PROMPT = """You are a senior Python code reviewer.
 
@@ -52,7 +61,7 @@ def critique_code(task: str, code: str, output: str, client_override=None, model
     Day 7 TODO: add confidence score (0.0–1.0) to the return dict
     for adaptive early-stop in the repair loop.
     """
-    _client = client_override or client
+    _client = client_override or _get_client()
     _model = model_override or MODEL
 
     user_message = f"""Task the code was written for:
@@ -85,7 +94,7 @@ def critique_rewrite(task: str, code: str, instructions: str, client_override=No
     Ask the generator to rewrite code based on critique instructions.
     Returns only the raw improved Python code string.
     """
-    _client = client_override or client
+    _client = client_override or _get_client()
     _model = model_override or MODEL
 
     response = _client.chat.completions.create(
