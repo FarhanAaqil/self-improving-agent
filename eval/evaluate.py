@@ -2,9 +2,7 @@
 # HumanEval evaluation engine.
 # Moved from root evaluate.py into eval/ with updated imports.
 #
-# NOTE: This version still calls sandbox.run_code() which uses subprocess.
-# After Day 2, this will automatically use the Docker sandbox because
-# app.sandbox.run_code() will be the Docker-backed version.
+# Uses app.sandbox.run_code() which executes in Docker with network/memory caps.
 #
 # NOTE: Results currently write to logs/humaneval_results.jsonl.
 # Day 8 replaces this with results/humaneval_DATE.json committed to git.
