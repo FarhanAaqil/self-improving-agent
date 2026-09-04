@@ -1,8 +1,14 @@
 import os
 import pytest
-from app.sandbox import run_code
+from app.sandbox import _is_docker_available, run_code
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "adversarial")
+
+
+@pytest.fixture(autouse=True)
+def require_docker():
+    if not _is_docker_available():
+        pytest.skip("Docker daemon not running — isolation tests require active Docker engine")
 
 
 def _read_fixture(filename: str) -> str:
