@@ -15,8 +15,13 @@ from eval.humaneval_problems import PROBLEMS
 from app.config import GROQ_API_KEY, AVAILABLE_MODELS, MAX_RETRIES, MAX_CRITIQUE_ROUNDS, LOG_DIR, BENCHMARK_RUNS
 
 import json
+import uuid
 from datetime import datetime
 from groq import Groq
+from app.db import init_db, insert_run, update_run_status, insert_attempt
+
+# Initialize SQLite database on startup
+init_db()
 
 try:
     from app.memory import store_failure, build_memory_context, retrieve_similar_failures, memory_stats, clear_memory
@@ -34,12 +39,6 @@ Code must be complete and runnable. Do not use input(). Only use standard librar
 for k, v in {"history":[],"total_tasks":0,"total_success":0,"task_input":"","he_results":None}.items():
     if k not in st.session_state: st.session_state[k] = v
 
-def log(task, attempt, code, result, phase="generate"):
-    os.makedirs(LOG_DIR, exist_ok=True)
-    with open(os.path.join(LOG_DIR,"attempts.jsonl"),"a",encoding="utf-8") as f:
-        f.write(json.dumps({"timestamp":datetime.now().isoformat(),"phase":phase,"task":task,
-            "attempt":attempt,"code":code,"success":result["success"],
-            "error":result.get("error"),"output":result.get("output")})+"\n")
 
 def gen_messages(task, error=None, attempt=1, memory_context=""):
     system = SYSTEM_PROMPT + (f"\n\n{memory_context}" if memory_context else "")
@@ -149,6 +148,8 @@ with tab_agent:
 
     if run_clicked and task and api_key:
         st.session_state.task_input = task
+        current_run_id = f"run_{uuid.uuid4().hex[:8]}"
+        insert_run(current_run_id, task, final_status="running")
         client = Groq(api_key=api_key)
         st.divider()
         pn = [1]
@@ -196,7 +197,17 @@ with tab_agent:
                     st.error(f"LLM error: {e}"); break
                 badge.warning("Running…")
                 result = run_code(code)
-                log(task, attempt, code, result, "generate")
+                insert_attempt(
+                    run_id=current_run_id,
+                    attempt_number=attempt,
+                    generated_code=code,
+                    stdout=result.get("output"),
+                    stderr=result.get("error"),
+                    exit_code=result.get("exit_code", 0),
+                    success=result["success"],
+                    latency_ms=result.get("latency_ms", 0),
+                    model_name=model,
+                )
                 gen_attempts += 1
                 if result["success"]:
                     badge.success("✅ Passed")
@@ -211,11 +222,13 @@ with tab_agent:
 
         progress.empty()
         if not working_code:
+            update_run_status(current_run_id, final_status="max_retries_exceeded", total_attempts=gen_attempts)
             st.error(f"Failed after {int(max_retries)} attempts.")
             st.session_state.total_tasks+=1
             st.session_state.history.append({"task":task,"success":False,"attempts":gen_attempts,"critique_rounds":0,"code":None,"output":None,"benchmark":None,"timestamp":datetime.now().strftime("%H:%M:%S")})
             st.stop()
         st.success(f"✅ Working code found in {gen_attempts} attempt(s).")
+        update_run_status(current_run_id, final_status="success", total_attempts=gen_attempts)
 
         # Benchmark before critique
         bm_before = None
@@ -250,7 +263,17 @@ with tab_agent:
                     except Exception as e:
                         st.error(f"Rewrite error: {e}"); break
                     recheck = run_code(new_code)
-                    log(task,rnd,new_code,recheck,"critique")
+                    insert_attempt(
+                        run_id=current_run_id,
+                        attempt_number=gen_attempts + rnd,
+                        generated_code=new_code,
+                        stdout=recheck.get("output"),
+                        stderr=recheck.get("error"),
+                        exit_code=recheck.get("exit_code", 0),
+                        success=recheck["success"],
+                        latency_ms=recheck.get("latency_ms", 0),
+                        model_name=model,
+                    )
                     if recheck["success"]:
                         final_code=new_code; final_output=recheck["output"] or ""
                         st.success("✅ Rewrite valid.")
