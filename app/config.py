@@ -1,5 +1,6 @@
 # ── app/config.py ──────────────────────────────────────────
 import os
+
 from dotenv import load_dotenv
 
 # Project root is one level up from app/

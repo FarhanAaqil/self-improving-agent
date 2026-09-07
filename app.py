@@ -2,31 +2,46 @@
 # Self-Improving Code Agent — Final (Week 5)
 # Run with: streamlit run app.py
 
+import os
+import sys
+
 import streamlit as st
-import sys, os
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ── Day 1: updated imports to use new app/ layout ──────────
-from app.sandbox import run_code
-from app.critique import critique_code
-from benchmark import benchmark_code, benchmark_memory_only, compare, log_benchmark
-from eval.evaluate import evaluate_all, run_agent, run_baseline
-from eval.humaneval_problems import PROBLEMS
-from app.config import GROQ_API_KEY, AVAILABLE_MODELS, MAX_RETRIES, MAX_CRITIQUE_ROUNDS, LOG_DIR, BENCHMARK_RUNS
-
-import json
 import uuid
-import httpx
 from datetime import datetime
+
+import httpx
 from groq import Groq
-from app.config import API_BASE_URL
-from app.db import init_db, insert_run, update_run_status, insert_attempt
+
+from app.config import (
+    API_BASE_URL,
+    AVAILABLE_MODELS,
+    BENCHMARK_RUNS,
+    GROQ_API_KEY,
+    MAX_CRITIQUE_ROUNDS,
+    MAX_RETRIES,
+)
+from app.critique import critique_code
+from app.db import init_db, insert_attempt, insert_run, update_run_status
+from app.sandbox import run_code
+from benchmark import benchmark_code, benchmark_memory_only, compare, log_benchmark
+from eval.evaluate import evaluate_all
+from eval.humaneval_problems import PROBLEMS
 
 # Initialize SQLite database on startup
 init_db()
 
 try:
-    from app.memory import store_failure, build_memory_context, retrieve_similar_failures, memory_stats, clear_memory
+    from app.memory import (
+        build_memory_context,
+        clear_memory,
+        memory_stats,
+        retrieve_similar_failures,
+        store_failure,
+    )
     MEMORY_AVAILABLE = True
 except ImportError:
     MEMORY_AVAILABLE = False

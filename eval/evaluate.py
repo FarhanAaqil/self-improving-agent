@@ -11,13 +11,14 @@ import json
 import os
 import sys
 from datetime import datetime
+
 from groq import Groq
 
 # Allow running directly or as module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.config import LOG_DIR, MAX_RETRIES
 from app.sandbox import run_code
-from app.config import MAX_RETRIES, MODEL, LOG_DIR
 
 AGENT_SYSTEM = """You are an expert Python programmer.
 Complete the given Python function. Return ONLY the complete function — no markdown, no backticks, no explanations."""
@@ -29,7 +30,7 @@ Complete the given Python function. Return only the function — no markdown, no
 def _clean(code: str) -> str:
     if "```" in code:
         lines = code.splitlines()
-        code = "\n".join(l for l in lines if not l.strip().startswith("```"))
+        code = "\n".join(line for line in lines if not line.strip().startswith("```"))
     return code.strip()
 
 
