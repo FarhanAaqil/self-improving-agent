@@ -51,12 +51,12 @@ jobs:
 
   # ── Smoke eval (requires GROQ_API_KEY + Docker) ─────────────
   # Added Day 9. Runs 8 HumanEval problems.
-  # Skipped gracefully in forks that don't have the secret.
+  # Skipped gracefully in forks that don't have the secret (pull requests from forks do not receive secrets)
   smoke-eval:
     name: Smoke eval (8 HumanEval problems)
     runs-on: ubuntu-latest
     needs: unit-tests
-    if: ${{ vars.GROQ_API_KEY != '' || secrets.GROQ_API_KEY != '' }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
 
@@ -69,8 +69,12 @@ jobs:
 
       - name: Run smoke eval
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || vars.GROQ_API_KEY }}
         run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "GROQ_API_KEY is not set. Skipping smoke eval."
+            exit 0
+          fi
           if [ -f scripts/smoke_eval.py ]; then
             python scripts/smoke_eval.py --problems 8
           else
