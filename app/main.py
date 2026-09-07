@@ -16,7 +16,6 @@ from app.config import (
 from app.critique import critique_code
 from app.db import (
     get_latest_eval_run,
-    get_run,
     get_run_with_attempts,
     init_db,
     insert_attempt,
@@ -38,7 +37,6 @@ from app.schemas import (
     GenerateRequest,
     RunOut,
 )
-
 
 # Ensure SQLite tables exist immediately upon import
 init_db()
@@ -212,7 +210,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     # Optional Critique review if working code was found
     if working_code and "critique" not in req.skip_agents:
         try:
-            verdict = critique_code(req.task_description, working_code, working_output, model_override=model_name)
+            critique_code(req.task_description, working_code, working_output, model_override=model_name)
             # Store critique feedback on latest attempt
             pass
         except Exception:
@@ -301,10 +299,11 @@ def get_latest_eval_endpoint():
 def _run_eval_job(eval_id: str, benchmark: str, subset_size: int):
     # Executed as a background worker task
     try:
+        from groq import Groq
+
+        from app.config import GROQ_API_KEY
         from eval.evaluate import evaluate_all
         from eval.humaneval_problems import PROBLEMS
-        from groq import Groq
-        from app.config import GROQ_API_KEY
 
         client = Groq(api_key=GROQ_API_KEY)
         subset = PROBLEMS[:subset_size] if subset_size else PROBLEMS

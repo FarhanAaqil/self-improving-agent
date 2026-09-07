@@ -4,14 +4,14 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
 import uuid
+from datetime import datetime
 
 # Add repo root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db import init_db, insert_run, insert_attempt
 from app.config import DB_PATH, LOG_DIR
+from app.db import init_db, insert_attempt, insert_run
 
 
 def migrate(jsonl_path: str, db_path: str = DB_PATH) -> tuple[int, int]:

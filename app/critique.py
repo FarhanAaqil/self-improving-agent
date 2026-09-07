@@ -6,6 +6,7 @@
 # for the adaptive early-stop feature.
 
 from groq import Groq
+
 from app.config import GROQ_API_KEY, MODEL
 
 # Lazy — not instantiated at import time so the module is safe to import

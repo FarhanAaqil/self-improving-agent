@@ -5,6 +5,7 @@
 # that was embedded in app.py — no functional change yet.
 
 from groq import Groq
+
 from app.config import GROQ_API_KEY, MODEL
 
 SYSTEM_PROMPT = """You are an expert Python programmer.

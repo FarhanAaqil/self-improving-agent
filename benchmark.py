@@ -2,14 +2,14 @@
 # Week 4: Benchmarking — Windows + Linux compatible
 # Measures runtime (timeit) and memory (tracemalloc) before/after critique.
 
-import timeit
-import tracemalloc
+import json
+import os
 import subprocess
 import sys
 import tempfile
-import os
-import json
+import timeit
 from datetime import datetime
+
 from config import BENCHMARK_RUNS, BENCHMARK_TIMEOUT, LOG_DIR
 
 

@@ -1,8 +1,9 @@
 import os
 import tempfile
+
 import pytest
+
 from app.db import (
-    get_connection,
     get_latest_eval_run,
     get_run,
     get_run_with_attempts,

@@ -19,7 +19,8 @@ from datetime import datetime
 
 import chromadb
 from chromadb.utils import embedding_functions
-from config import MEMORY_DIR, MEMORY_COLLECTION, MEMORY_TOP_K
+
+from config import MEMORY_COLLECTION, MEMORY_DIR, MEMORY_TOP_K
 
 # ── Setup ────────────────────────────────────────────────────
 # PersistentClient saves everything to disk — survives restarts

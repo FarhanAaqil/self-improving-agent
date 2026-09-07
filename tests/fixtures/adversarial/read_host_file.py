@@ -1,6 +1,5 @@
 # Adversarial test: attempts to read sensitive host/system paths outside the container mount.
 # Sandbox isolation must ensure host credentials and sensitive files are never accessible.
-import os
 
 targets = ["/etc/shadow", "/etc/passwd", "/root/.ssh/id_rsa"]
 leaked = []
