@@ -16,8 +16,10 @@ from app.config import GROQ_API_KEY, AVAILABLE_MODELS, MAX_RETRIES, MAX_CRITIQUE
 
 import json
 import uuid
+import httpx
 from datetime import datetime
 from groq import Groq
+from app.config import API_BASE_URL
 from app.db import init_db, insert_run, update_run_status, insert_attempt
 
 # Initialize SQLite database on startup
@@ -75,7 +77,14 @@ def render_comparison(cmp):
 # ── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
     st.title("🤖 Code Agent")
-    st.caption("Final build · All 4 systems active · Zero cost")
+    def check_backend_alive() -> bool:
+        try:
+            return httpx.get(f"{API_BASE_URL}/health", timeout=0.5).status_code == 200
+        except Exception:
+            return False
+
+    api_online = check_backend_alive()
+    st.caption(f"Backend: {'🟢 FastAPI Connected' if api_online else '⚪ Standalone Engine'}")
     st.divider()
     api_key = GROQ_API_KEY
 
@@ -148,6 +157,31 @@ with tab_agent:
 
     if run_clicked and task and api_key:
         st.session_state.task_input = task
+
+        # Thin client: if FastAPI server is active, route directly to the backend
+        if api_online:
+            with st.spinner("Dispatching task to FastAPI backend (/generate-and-repair)..."):
+                try:
+                    resp = httpx.post(
+                        f"{API_BASE_URL}/generate-and-repair",
+                        json={"task_description": task, "max_attempts": int(max_retries), "model": model},
+                        timeout=120.0,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        st.success(f"Run `{data['run_id']}` — status: `{data['final_status']}` ({data['total_attempts']} attempts)")
+                        for att in data.get("attempts", []):
+                            badge = "✅ Passed" if att["success"] else "❌ Failed"
+                            with st.expander(f"Attempt {att['attempt_number']} · {badge}", expanded=True):
+                                st.code(att["generated_code"], language="python")
+                                if att.get("stdout"):
+                                    st.caption("Output"); st.code(att["stdout"])
+                                if att.get("stderr"):
+                                    st.caption("Error"); st.code(att["stderr"], language="bash")
+                        st.stop()
+                except Exception as e:
+                    st.warning(f"Backend call failed ({e}) — falling back to in-process execution.")
+
         current_run_id = f"run_{uuid.uuid4().hex[:8]}"
         insert_run(current_run_id, task, final_status="running")
         client = Groq(api_key=api_key)
