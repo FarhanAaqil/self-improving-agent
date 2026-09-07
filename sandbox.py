@@ -3,10 +3,11 @@
 # Week 1 uses subprocess (no Docker needed).
 # Week 2 will upgrade this to a Docker-isolated container.
 
+import os
 import subprocess
 import sys
 import tempfile
-import os
+
 from config import SANDBOX_TIMEOUT
 
 

@@ -20,7 +20,8 @@ from datetime import datetime
 
 import chromadb
 from chromadb.utils import embedding_functions
-from app.config import MEMORY_DIR, MEMORY_COLLECTION, MEMORY_TOP_K, MEMORY_SIMILARITY_THRESHOLD
+
+from app.config import MEMORY_COLLECTION, MEMORY_DIR, MEMORY_SIMILARITY_THRESHOLD, MEMORY_TOP_K
 
 # PersistentClient saves everything to disk — survives restarts
 _client = chromadb.PersistentClient(path=MEMORY_DIR)

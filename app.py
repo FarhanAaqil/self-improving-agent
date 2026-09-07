@@ -2,29 +2,46 @@
 # Self-Improving Code Agent — Final (Week 5)
 # Run with: streamlit run app.py
 
+import os
+import sys
+
 import streamlit as st
-import sys, os
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ── Day 1: updated imports to use new app/ layout ──────────
-from app.sandbox import run_code
-from app.critique import critique_code
-from benchmark import benchmark_code, benchmark_memory_only, compare, log_benchmark
-from eval.evaluate import evaluate_all, run_agent, run_baseline
-from eval.humaneval_problems import PROBLEMS
-from app.config import GROQ_API_KEY, AVAILABLE_MODELS, MAX_RETRIES, MAX_CRITIQUE_ROUNDS, LOG_DIR, BENCHMARK_RUNS
-
-import json
 import uuid
 from datetime import datetime
+
+import httpx
 from groq import Groq
-from app.db import init_db, insert_run, update_run_status, insert_attempt
+
+from app.config import (
+    API_BASE_URL,
+    AVAILABLE_MODELS,
+    BENCHMARK_RUNS,
+    GROQ_API_KEY,
+    MAX_CRITIQUE_ROUNDS,
+    MAX_RETRIES,
+)
+from app.critique import critique_code
+from app.db import init_db, insert_attempt, insert_run, update_run_status
+from app.sandbox import run_code
+from benchmark import benchmark_code, benchmark_memory_only, compare, log_benchmark
+from eval.evaluate import evaluate_all
+from eval.humaneval_problems import PROBLEMS
 
 # Initialize SQLite database on startup
 init_db()
 
 try:
-    from app.memory import store_failure, build_memory_context, retrieve_similar_failures, memory_stats, clear_memory
+    from app.memory import (
+        build_memory_context,
+        clear_memory,
+        memory_stats,
+        retrieve_similar_failures,
+        store_failure,
+    )
     MEMORY_AVAILABLE = True
 except ImportError:
     MEMORY_AVAILABLE = False
@@ -75,7 +92,14 @@ def render_comparison(cmp):
 # ── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
     st.title("🤖 Code Agent")
-    st.caption("Final build · All 4 systems active · Zero cost")
+    def check_backend_alive() -> bool:
+        try:
+            return httpx.get(f"{API_BASE_URL}/health", timeout=0.5).status_code == 200
+        except Exception:
+            return False
+
+    api_online = check_backend_alive()
+    st.caption(f"Backend: {'🟢 FastAPI Connected' if api_online else '⚪ Standalone Engine'}")
     st.divider()
     api_key = GROQ_API_KEY
 
@@ -148,6 +172,31 @@ with tab_agent:
 
     if run_clicked and task and api_key:
         st.session_state.task_input = task
+
+        # Thin client: if FastAPI server is active, route directly to the backend
+        if api_online:
+            with st.spinner("Dispatching task to FastAPI backend (/generate-and-repair)..."):
+                try:
+                    resp = httpx.post(
+                        f"{API_BASE_URL}/generate-and-repair",
+                        json={"task_description": task, "max_attempts": int(max_retries), "model": model},
+                        timeout=120.0,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        st.success(f"Run `{data['run_id']}` — status: `{data['final_status']}` ({data['total_attempts']} attempts)")
+                        for att in data.get("attempts", []):
+                            badge = "✅ Passed" if att["success"] else "❌ Failed"
+                            with st.expander(f"Attempt {att['attempt_number']} · {badge}", expanded=True):
+                                st.code(att["generated_code"], language="python")
+                                if att.get("stdout"):
+                                    st.caption("Output"); st.code(att["stdout"])
+                                if att.get("stderr"):
+                                    st.caption("Error"); st.code(att["stderr"], language="bash")
+                        st.stop()
+                except Exception as e:
+                    st.warning(f"Backend call failed ({e}) — falling back to in-process execution.")
+
         current_run_id = f"run_{uuid.uuid4().hex[:8]}"
         insert_run(current_run_id, task, final_status="running")
         client = Groq(api_key=api_key)

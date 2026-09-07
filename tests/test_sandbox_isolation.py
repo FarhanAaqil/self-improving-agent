@@ -1,5 +1,7 @@
 import os
+
 import pytest
+
 from app.sandbox import _is_docker_available, run_code
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "adversarial")

@@ -2,13 +2,16 @@
 # Week 5: HumanEval Evaluation Engine
 # Runs agent vs baseline on all 20 problems and reports pass@1.
 
-import json, os, sys
+import json
+import os
+import sys
 from datetime import datetime
+
 from groq import Groq
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config import LOG_DIR, MAX_RETRIES
 from sandbox import run_code
-from config import LOG_DIR, MAX_RETRIES, MODEL
 
 AGENT_SYSTEM = """You are an expert Python programmer.
 Complete the given Python function. Return ONLY the complete function — no markdown, no backticks, no explanations."""

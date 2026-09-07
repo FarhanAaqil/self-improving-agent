@@ -1,6 +1,5 @@
 # Adversarial test: attempts to write to container root filesystem.
 # With --read-only and --tmpfs /tmp, writing outside /tmp must fail with OSError/ReadOnlyFilesystem.
-import os
 
 escape_targets = ["/app/escape.txt", "/root/malicious.sh", "/etc/hacked.conf"]
 escaped = False
