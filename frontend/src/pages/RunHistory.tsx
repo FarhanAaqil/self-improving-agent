@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Filter,
   History,
-  Loader2,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -35,7 +34,6 @@ export default function RunHistory() {
     refetchInterval: 10000,
   })
 
-  // Reset to page 1 whenever filters change
   useEffect(() => {
     setCurrentPage(1)
   }, [statusFilter, searchQuery, pageSize])
@@ -64,14 +62,15 @@ export default function RunHistory() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2.5">
-            <History className="h-6 w-6 text-indigo-400" />
+          <h1 className="text-2xl font-semibold tracking-tight text-ink flex items-center gap-2.5">
+            <History className="h-5 w-5 text-accent" />
             <span>Run History</span>
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Historical log of code generation and autonomous repair sessions.
+          <p className="text-sm text-ink-secondary mt-1">
+            Historical audit log of code generation and autonomous repair sessions.
           </p>
         </div>
 
@@ -79,19 +78,19 @@ export default function RunHistory() {
           type="button"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition-colors disabled:opacity-50 cursor-pointer self-start sm:self-auto"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-surface hover:bg-canvas border border-border text-xs font-medium text-ink transition-colors disabled:opacity-50 cursor-pointer self-start sm:self-auto"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-indigo-400' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-accent' : 'text-ink-tertiary'}`} />
           <span>Refresh</span>
         </button>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      <div className="bg-surface border border-border rounded p-3 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 text-xs">
-          <Filter className="h-3.5 w-3.5 text-slate-500 shrink-0 ml-1" />
+          <Filter className="h-3.5 w-3.5 text-ink-tertiary shrink-0 ml-1" />
           {[
-            { id: 'all', label: 'All Runs' },
+            { id: 'all', label: 'All runs' },
             { id: 'success', label: 'Success' },
             { id: 'failed', label: 'Failed' },
             { id: 'running', label: 'Running' },
@@ -100,10 +99,10 @@ export default function RunHistory() {
               key={item.id}
               type="button"
               onClick={() => setStatusFilter(item.id)}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer shrink-0 ${
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
                 statusFilter === item.id
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  ? 'bg-accent-subtle text-accent border border-accent/30 font-semibold'
+                  : 'text-ink-secondary hover:text-ink hover:bg-surface-sunken'
               }`}
             >
               {item.label}
@@ -111,149 +110,170 @@ export default function RunHistory() {
           ))}
         </div>
 
-        <div className="relative min-w-[240px]">
-          <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <div className="relative w-full md:w-64">
+          <Search className="h-3.5 w-3.5 text-ink-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter by run ID or task..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            placeholder="Search run ID or task..."
+            className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border rounded text-xs text-ink placeholder-ink-tertiary focus:outline-none focus:border-accent focus:bg-surface transition-all font-sans"
           />
         </div>
       </div>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="p-12 border border-slate-800 rounded-xl bg-slate-900/30 flex flex-col items-center justify-center space-y-3">
-          <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
-          <div className="text-sm text-slate-400">Loading run history from SQLite...</div>
-        </div>
-      )}
-
-      {/* Error state */}
-      {isError && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-rose-400" />
-          <div>
-            <div className="font-semibold">Failed to fetch run history</div>
-            <div className="text-xs text-rose-300/80 font-mono mt-0.5">
-              {error instanceof Error ? error.message : 'Unknown network error'}
-            </div>
+      {/* Runs Table */}
+      <div className="bg-surface border border-border rounded overflow-hidden">
+        {isLoading ? (
+          <div className="p-12 text-center text-xs text-ink-secondary font-mono">
+            Loading run history from SQLite database...
           </div>
-        </div>
-      )}
-
-      {/* Table view */}
-      {!isLoading && !isError && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        ) : isError ? (
+          <div className="p-8 text-center text-xs text-status-danger flex items-center justify-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            <span>Failed to load run history: {error instanceof Error ? error.message : 'Network error'}</span>
+          </div>
+        ) : paginatedRuns.length === 0 ? (
+          <div className="p-12 text-center text-xs text-ink-secondary space-y-1">
+            <div className="font-medium text-ink">No execution runs found</div>
+            <div className="text-ink-tertiary">Try adjusting your status filter or submit a new run.</div>
+          </div>
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase font-mono tracking-wider">
-                <tr>
-                  <th className="py-3 px-4">Run ID</th>
-                  <th className="py-3 px-4">Task Description</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Attempts</th>
-                  <th className="py-3 px-4">Created</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-surface-sunken text-ink-secondary font-medium select-none">
+                  <th className="py-2.5 px-4 font-mono">Run ID</th>
+                  <th className="py-2.5 px-4">Task Description</th>
+                  <th className="py-2.5 px-4 font-mono">Attempts</th>
+                  <th className="py-2.5 px-4 font-mono">Quality</th>
+                  <th className="py-2.5 px-4">Status</th>
+                  <th className="py-2.5 px-4 font-mono">Created</th>
+                  <th className="py-2.5 px-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {paginatedRuns.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 italic">
-                      No matching runs found in database.
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedRuns.map((run) => (
-                    <tr key={run.run_id} className="hover:bg-slate-850/50 transition-colors">
-                      <td className="py-3 px-4 font-mono font-medium text-slate-200">
-                        <Link
-                          to={`/runs/${run.run_id}`}
-                          className="text-indigo-400 hover:text-indigo-300 hover:underline"
-                        >
+              <tbody className="divide-y divide-border">
+                {paginatedRuns.map((run, idx) => {
+                  const passingAttempt = run.attempts.find((a) => a.success)
+                  const lastAttempt = run.attempts[run.attempts.length - 1]
+                  const qualityScore =
+                    passingAttempt?.quality_overall_score ?? lastAttempt?.quality_overall_score
+
+                  return (
+                    <tr
+                      key={run.run_id}
+                      className={`hover:bg-accent-subtle/40 transition-colors ${
+                        idx % 2 === 1 ? 'bg-surface-sunken/40' : 'bg-surface'
+                      }`}
+                    >
+                      <td className="py-3 px-4 font-mono text-accent font-medium">
+                        <Link to={`/runs/${run.run_id}`} className="hover:underline">
                           {run.run_id}
                         </Link>
                       </td>
-                      <td className="py-3 px-4 max-w-md truncate text-slate-300" title={run.task_description}>
-                        {run.task_description}
+                      <td className="py-3 px-4 max-w-md">
+                        <div className="line-clamp-1 text-ink" title={run.task_description}>
+                          {run.task_description}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-ink-secondary">
+                        {run.attempts.length} / {run.total_attempts || 3}
+                      </td>
+                      <td className="py-3 px-4 font-mono">
+                        {qualityScore !== null && qualityScore !== undefined ? (
+                          <span
+                            className={`font-semibold ${
+                              qualityScore >= 8
+                                ? 'text-status-success'
+                                : qualityScore >= 6
+                                ? 'text-status-warning'
+                                : 'text-status-danger'
+                            }`}
+                          >
+                            {qualityScore.toFixed(1)}/10
+                          </span>
+                        ) : (
+                          <span className="text-ink-tertiary">—</span>
+                        )}
                       </td>
                       <td className="py-3 px-4">
                         <StatusBadge status={run.final_status} size="sm" />
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-400">
-                        {run.total_attempts} attempt{run.total_attempts === 1 ? '' : 's'}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-500">
-                        {run.created_at ? new Date(run.created_at).toLocaleString() : '—'}
+                      <td className="py-3 px-4 font-mono text-ink-tertiary">
+                        {run.created_at
+                          ? new Date(run.created_at).toLocaleDateString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—'}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <Link
                           to={`/runs/${run.run_id}`}
-                          className="inline-flex items-center gap-1 text-slate-400 hover:text-indigo-400 font-medium transition-colors"
+                          className="inline-flex items-center gap-1 text-accent hover:text-accent-hover font-medium"
                         >
-                          <span>View</span>
+                          <span>Detail</span>
                           <ExternalLink className="h-3 w-3" />
                         </Link>
                       </td>
                     </tr>
-                  ))
-                )}
+                  )
+                })}
               </tbody>
             </table>
           </div>
+        )}
 
-          {/* Pagination Footer */}
-          {totalItems > 0 && (
-            <div className="px-4 py-3 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-              <div className="flex items-center gap-2 font-mono">
-                <span>
-                  Showing {startIndex + 1}–{endIndex} of {totalItems} runs
-                </span>
-                <span>•</span>
-                <div className="flex items-center gap-1">
-                  <span>Per page:</span>
-                  <select
-                    value={pageSize}
-                    onChange={(e) => setPageSize(Number(e.target.value))}
-                    className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
-                  >
-                    <option value={10}>10</option>
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                  </select>
-                </div>
+        {/* Pagination Bar */}
+        {!isLoading && filteredRuns.length > 0 && (
+          <div className="px-4 py-3 border-t border-border bg-surface flex items-center justify-between text-xs text-ink-secondary">
+            <div>
+              Showing <span className="font-mono text-ink">{startIndex + 1}</span> to{' '}
+              <span className="font-mono text-ink">{endIndex}</span> of{' '}
+              <span className="font-mono text-ink">{totalItems}</span> runs
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span>Per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="bg-surface-sunken border border-border rounded px-1.5 py-0.5 text-xs font-mono text-ink focus:outline-none"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="font-mono mr-2">
-                  Page {currentPage} of {totalPages}
-                </span>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage <= 1}
-                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                  aria-label="Previous page"
+                  disabled={currentPage === 1}
+                  className="p-1 rounded hover:bg-surface-sunken disabled:opacity-30 disabled:cursor-not-allowed text-ink cursor-pointer border border-border"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
+                <span className="font-mono text-xs px-2">
+                  {currentPage} / {totalPages}
+                </span>
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages}
-                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                  aria-label="Next page"
+                  disabled={currentPage === totalPages}
+                  className="p-1 rounded hover:bg-surface-sunken disabled:opacity-30 disabled:cursor-not-allowed text-ink cursor-pointer border border-border"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

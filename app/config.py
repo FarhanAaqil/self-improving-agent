@@ -11,8 +11,13 @@ load_dotenv(os.path.join(_ROOT, ".env"))
 
 # ── LLM ────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL = os.getenv("MODEL", "llama-3.3-70b-versatile")
-AVAILABLE_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+MODEL = os.getenv("MODEL", "qwen/qwen3.8-27b")
+AVAILABLE_MODELS = [
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+]
 
 # ── Agent runtime behavior ──────────────────────────────────
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))

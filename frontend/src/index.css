@@ -2,8 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-bg: #F6F7F9;
+  --color-surface: #FFFFFF;
+  --color-surface-sunken: #EEF0F3;
+  --color-text-primary: #10182B;
+  --color-text-secondary: #4A5468;
+  --color-text-tertiary: #8891A3;
+  --color-accent: #2E4CE0;
+  --color-accent-hover: #2440C4;
+  --color-accent-subtle: #E8ECFC;
+  --color-success: #1A7F5A;
+  --color-success-subtle: #E4F5EE;
+  --color-warning: #B7791F;
+  --color-warning-subtle: #FBF0DE;
+  --color-danger: #C4432E;
+  --color-danger-subtle: #FBEAE6;
+  --color-border: #E1E4EA;
+  --color-border-strong: #C7CCD6;
+}
+
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 antialiased min-h-screen font-sans;
+    background-color: #F6F7F9;
+    color: #10182B;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  code, pre, kbd {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+}
+
+@keyframes pulse-underline {
+  0%, 100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scaleX(0.8);
+  }
+}
+
+.animate-pulse-underline {
+  animation: pulse-underline 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

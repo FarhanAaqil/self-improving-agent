@@ -1,171 +1,123 @@
-import {
-  AlertTriangle,
-  Cpu,
-  FileCheck,
-  FolderLock,
-  Globe,
-  Lock,
-  ShieldCheck,
-  Terminal,
-  Zap,
-} from 'lucide-react'
-
 export default function SecurityAbout() {
   return (
-    <div className="space-y-8 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2.5">
-          <ShieldCheck className="h-6 w-6 text-indigo-400" />
-          <span>Security Architecture & Threat Model</span>
+    <article className="max-w-[720px] space-y-8 py-2 font-sans text-ink leading-relaxed">
+      {/* Title & Introduction */}
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
+          Security Architecture & Threat Model
         </h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Technical specifications of container isolation, sandbox security boundaries, and architectural limitations.
+        <p className="text-sm text-ink-secondary leading-normal">
+          Technical specifications of container isolation, host sandbox boundaries, and architectural limitations.
         </p>
-      </div>
+      </header>
 
-      {/* Philosophy banner */}
-      <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-        <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <Lock className="h-4 w-4 text-emerald-400" />
-          <span>Core Security Premise</span>
+      <hr className="border-border" />
+
+      {/* Section 1: Core Premise */}
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-ink">
+          1. Core Security Premise
         </h2>
-        <p className="text-xs text-slate-400 leading-relaxed">
-          In an autonomous code generation agent, LLM output must be treated as completely untrusted arbitrary code. Simple process spawning via Python <code className="text-slate-300">subprocess.run()</code> or in-memory <code className="text-slate-300">exec()</code> is vulnerable to host file access, network exfiltration, persistence attacks, and system exhaustion.
+        <p className="text-sm text-ink-secondary">
+          In an autonomous code generation system, model output must be treated as untrusted arbitrary code. Simple process spawning via Python <code className="px-1 py-0.5 rounded bg-surface-sunken border border-border text-xs font-mono text-ink">subprocess.run()</code> or in-memory <code className="px-1 py-0.5 rounded bg-surface-sunken border border-border text-xs font-mono text-ink">exec()</code> exposes the host system to file system traversal, network exfiltration, persistence, and algorithmic resource exhaustion.
         </p>
-      </div>
+        <p className="text-sm text-ink-secondary">
+          Every synthesized script is mounted read-only into an ephemeral Docker container and executed under strict kernel-level cgroup constraints. If Docker is unavailable, the agent fails closed by default rather than running unverified code on the host.
+        </p>
+      </section>
 
-      {/* 4 Sandbox Isolation Layers */}
-      <div className="space-y-3">
-        <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-          <Terminal className="h-4 w-4 text-indigo-400" />
-          <span>Container Isolation Controls</span>
+      <hr className="border-border" />
+
+      {/* Section 2: Sandbox Isolation Controls */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-ink">
+          2. Container Isolation Controls
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Globe className="h-4 w-4 text-rose-400" />
-              <span>Zero Outbound Network</span>
+        <div className="space-y-3 text-sm text-ink-secondary">
+          <div>
+            <div className="font-medium text-ink flex items-center justify-between">
+              <span>Network isolation</span>
+              <code className="text-xs font-mono text-accent">--network none</code>
             </div>
-            <div className="font-mono text-xs text-indigo-300 bg-slate-950 p-2 rounded border border-slate-800">
-              --network none
-            </div>
-            <p className="text-xs text-slate-400">
-              Generated code runs with loopback and physical network interfaces disabled. Prohibits socket creation, remote HTTP dialing, credential exfiltration, and botnet propagation.
+            <p className="mt-1">
+              Loopback and physical network interfaces are disabled within the container. Code cannot initiate TCP/UDP connections, resolve external DNS, exfiltrate API credentials, or communicate with local networks.
             </p>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Cpu className="h-4 w-4 text-amber-400" />
-              <span>Resource & Compute Capping</span>
+          <div>
+            <div className="font-medium text-ink flex items-center justify-between">
+              <span>Resource & memory bounds</span>
+              <code className="text-xs font-mono text-accent">--memory=256m --cpus=0.5</code>
             </div>
-            <div className="font-mono text-xs text-indigo-300 bg-slate-950 p-2 rounded border border-slate-800">
-              --memory=256m --cpus=0.5
-            </div>
-            <p className="text-xs text-slate-400">
-              Hard kernel cgroup limits prevent algorithmic exhaustion, runaway loops, and fork bombs. Hitting 256MB triggers an instantaneous kernel OOM termination.
+            <p className="mt-1">
+              Linux kernel cgroups bound memory and CPU usage. Memory consumption exceeding 256MB triggers an immediate kernel OOM killer termination, neutralizing fork bombs and memory exhaustion loops.
             </p>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <FolderLock className="h-4 w-4 text-sky-400" />
-              <span>Immutable Filesystem</span>
+          <div>
+            <div className="font-medium text-ink flex items-center justify-between">
+              <span>Read-only root filesystem</span>
+              <code className="text-xs font-mono text-accent">--read-only --tmpfs /tmp:rw,size=64m</code>
             </div>
-            <div className="font-mono text-xs text-indigo-300 bg-slate-950 p-2 rounded border border-slate-800">
-              --read-only --tmpfs /tmp:rw,size=64m
-            </div>
-            <p className="text-xs text-slate-400">
-              Container root filesystem is entirely immutable. Only a 64MB RAM-backed tmpfs mount at <code className="text-slate-300">/tmp</code> is writable, preventing binary tampering or malicious persistence.
+            <p className="mt-1">
+              The container filesystem is mounted strictly read-only. Only a volatile 64MB RAM-backed tmpfs mount at <code className="px-1 py-0.5 rounded bg-surface-sunken border border-border text-xs font-mono text-ink">/tmp</code> permits scratch files, preventing persistent file system modifications.
             </p>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Zap className="h-4 w-4 text-emerald-400" />
-              <span>Host-Controlled Timeout</span>
+          <div>
+            <div className="font-medium text-ink flex items-center justify-between">
+              <span>Host-enforced timeout supervisor</span>
+              <code className="text-xs font-mono text-accent">timeout=10s + docker rm -f</code>
             </div>
-            <div className="font-mono text-xs text-indigo-300 bg-slate-950 p-2 rounded border border-slate-800">
-              subprocess.run(timeout=10) + docker rm -f
-            </div>
-            <p className="text-xs text-slate-400">
-              Execution timeouts are enforced externally by the host supervisor rather than in-process signals, ensuring malicious code cannot trap or intercept SIGALRM to outlive the timeout.
+            <p className="mt-1">
+              Timeouts are enforced by the host supervisor process using wall-clock deadlines rather than in-process signals. Untrusted scripts cannot intercept or suppress termination.
             </p>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Adversarial Testing Suite */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <FileCheck className="h-4 w-4 text-indigo-400" />
-          <span>Adversarial Test Suite Fixtures</span>
+      <hr className="border-border" />
+
+      {/* Section 3: Verification & Adversarial Test Suite */}
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-ink">
+          3. Adversarial Test Suite
         </h2>
-        <p className="text-xs text-slate-400">
-          The CI test pipeline executes 5 explicit attack vectors on every commit to verify that security controls cannot silently regress:
+        <p className="text-sm text-ink-secondary">
+          The container boundary is verified continuously through regression test fixtures in <code className="px-1 py-0.5 rounded bg-surface-sunken border border-border text-xs font-mono text-ink">tests/test_sandbox_isolation.py</code>:
         </p>
-        <div className="space-y-2 text-xs font-mono">
-          {[
-            {
-              name: 'outbound_network.py',
-              target: 'Network socket',
-              expected: 'Blocked by --network none with URLError',
-            },
-            {
-              name: 'read_host_file.py',
-              target: 'Host /etc/shadow, ~/.ssh',
-              expected: 'Blocked by container filesystem mount isolation',
-            },
-            {
-              name: 'fork_bomb.py',
-              target: 'Memory / CPU exhaustion',
-              expected: 'Killed by cgroup memory hard limit (256MB)',
-            },
-            {
-              name: 'write_outside_tmp.py',
-              target: 'Root filesystem write',
-              expected: 'Blocked by --read-only with ReadOnlyFilesystem error',
-            },
-            {
-              name: 'outlive_timeout.py',
-              target: 'Background child process',
-              expected: 'Terminated by host supervisor timeout cleanup',
-            },
-          ].map((item) => (
-            <div
-              key={item.name}
-              className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1"
-            >
-              <div className="flex items-center gap-2 text-slate-200">
-                <span className="text-emerald-400 font-bold">✓</span>
-                <span>{item.name}</span>
-                <span className="text-slate-500 font-sans text-[11px]">({item.target})</span>
-              </div>
-              <span className="text-slate-400 text-[11px]">{item.expected}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+        <ul className="text-xs text-ink-secondary space-y-1.5 list-disc list-inside font-mono">
+          <li>outbound_network.py — attempts HTTP exfiltration via urllib to external IP</li>
+          <li>read_host_file.py — attempts directory traversal to host /etc/shadow or /etc/passwd</li>
+          <li>fork_bomb.py — initiates recursive process spawning to exhaust memory</li>
+          <li>write_outside_tmp.py — attempts binary drops to /usr/local/bin and /bin</li>
+          <li>outlive_timeout.py — overrides SIGTERM/SIGALRM to loop indefinitely</li>
+        </ul>
+      </section>
 
-      {/* Architectural Limitations & Boundary Notice */}
-      <div className="bg-slate-900/40 border border-slate-800/90 rounded-xl p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-400" />
-          <span>Documented Limitations & Trust Boundary</span>
+      <hr className="border-border" />
+
+      {/* Section 4: Threat Model & Boundaries */}
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-ink">
+          4. Honest Threat Model Limitations
         </h2>
-        <div className="space-y-2 text-xs text-slate-400 leading-relaxed">
-          <p>
-            <strong className="text-slate-200">1. Single Language Runtime:</strong> Currently supports Python 3.11 environments only. Multi-language sandboxing (Node, Go, Rust) is out of scope.
-          </p>
-          <p>
-            <strong className="text-slate-200">2. Docker Socket Risk:</strong> In production containerized deployments, granting the API service container access to the host Docker daemon socket (<code className="text-slate-300">/var/run/docker.sock</code>) confers root-equivalent host privileges. For hostile public multi-tenant environments, run sandboxes on isolated VM worker nodes or microVM platforms like Firecracker / gVisor.
-          </p>
-          <p>
-            <strong className="text-slate-200">3. Evaluation Scope:</strong> The HumanEval benchmark subset is capped at 50 representative problems to adhere to API token limits while maintaining statistically meaningful pass@1 and pass@5 comparisons.
-          </p>
-        </div>
-      </div>
-    </div>
+        <p className="text-sm text-ink-secondary">
+          Security requires transparency regarding what the system does not solve:
+        </p>
+        <ul className="text-sm text-ink-secondary space-y-2 list-disc list-inside">
+          <li>
+            <strong className="text-ink">Container escape zero-days:</strong> Standard Docker isolation shares the host Linux kernel. In multi-tenant enterprise deployments, microVM isolation (such as AWS Firecracker or gVisor runsc) should replace standard runc.
+          </li>
+          <li>
+            <strong className="text-ink">Logic errors vs malicious code:</strong> Sandbox controls verify execution safety, not semantic correctness against business rules.
+          </li>
+          <li>
+            <strong className="text-ink">Docker socket exposure:</strong> In containerized deployments (Docker-in-Docker), access to <code className="px-1 py-0.5 rounded bg-surface-sunken border border-border text-xs font-mono text-ink">/var/run/docker.sock</code> grants root-equivalent control over the host engine and must be restricted to trusted networks.
+          </li>
+        </ul>
+      </section>
+    </article>
   )
 }
