@@ -258,23 +258,39 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
         critique_re = None
 
         if "test" not in req.skip_agents and "tests" not in req.skip_agents:
-            generated_tests = generate_unit_tests(req.task_description, working_code, model_override=model_name)
+            try:
+                generated_tests = generate_unit_tests(req.task_description, working_code, model_override=model_name)
+            except Exception:
+                generated_tests = None
 
         if "performance" not in req.skip_agents:
-            performance_notes = analyze_performance(req.task_description, working_code, model_override=model_name)
+            try:
+                performance_notes = analyze_performance(req.task_description, working_code, model_override=model_name)
+            except Exception:
+                performance_notes = None
 
         if "security_audit" not in req.skip_agents and "security" not in req.skip_agents:
-            security_audit = CodeSecurityAudit.audit(req.task_description, working_code, model_override=model_name)
+            try:
+                security_audit = CodeSecurityAudit.audit(req.task_description, working_code, model_override=model_name)
+            except Exception:
+                security_audit = None
 
         if "docs" not in req.skip_agents and "documentation" not in req.skip_agents:
-            documented_code = document_code(req.task_description, working_code, model_override=model_name)
-            if documented_code:
-                working_code = documented_code
+            try:
+                documented_code = document_code(req.task_description, working_code, model_override=model_name)
+                if documented_code:
+                    working_code = documented_code
+            except Exception:
+                pass
 
         if "critique" not in req.skip_agents:
-            c_res = critique_code(req.task_description, working_code, working_output, model_override=model_name)
-            critique_conf = c_res.get("confidence")
-            critique_re = c_res.get("reasoning")
+            try:
+                c_res = critique_code(req.task_description, working_code, working_output, model_override=model_name)
+                critique_conf = c_res.get("confidence")
+                critique_re = c_res.get("reasoning")
+            except Exception:
+                critique_conf = None
+                critique_re = None
 
         update_attempt_review(
             attempt_id=passing_attempt_id,
