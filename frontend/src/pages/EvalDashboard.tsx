@@ -7,12 +7,12 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  HelpCircle,
   Layers,
   Loader2,
   Play,
   RefreshCw,
   Sliders,
-  Sparkles,
 } from 'lucide-react'
 import { getLatestEval, triggerEval } from '../api/client'
 import type { EvalResultOut, EvalRunOut, EvalRunRequest } from '../api/types'
@@ -56,7 +56,7 @@ export default function EvalDashboard() {
 
   // Prepare chart points from latest eval or historical records
   const chartData: EvalDataPoint[] = []
-  if (evalResult && evalResult.pass_at_1 !== null && evalResult.pass_at_1 !== undefined) {
+  if (evalResult && evalResult.pass_at_1 !== null && evalResult.pass_at_1 !== undefined && evalResult.eval_id !== 'none') {
     chartData.push({
       date: 'Baseline (Zero-shot)',
       passAt1: Math.max(0, (evalResult.pass_at_1 || 50) - 18),
@@ -70,6 +70,12 @@ export default function EvalDashboard() {
       problems: evalResult.total_problems || 50,
     })
   }
+
+  const hasEvalResults =
+    evalResult &&
+    evalResult.eval_id !== 'none' &&
+    evalResult.pass_at_1 !== null &&
+    evalResult.pass_at_1 !== undefined
 
   return (
     <div className="space-y-6">
@@ -117,7 +123,7 @@ export default function EvalDashboard() {
             <button
               type="button"
               onClick={() => setShowRunModal(false)}
-              className="text-slate-400 hover:text-slate-200 text-xs font-mono"
+              className="text-slate-400 hover:text-slate-200 text-xs font-mono cursor-pointer"
             >
               Cancel
             </button>
@@ -187,13 +193,27 @@ export default function EvalDashboard() {
           <button
             type="button"
             onClick={() => setEvalNotification(null)}
-            className="text-slate-400 hover:text-slate-200"
+            className="text-slate-400 hover:text-slate-200 cursor-pointer"
           >
             Dismiss
           </button>
         </div>
       )}
 
+      {/* Mutation error banner */}
+      {runMutation.isError && (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-3">
+          <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold">Failed to dispatch evaluation</div>
+            <div className="text-rose-300/80 font-mono mt-0.5">
+              {runMutation.error instanceof Error ? runMutation.error.message : 'Unknown dispatch error'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading state */}
       {isLoading && (
         <div className="p-16 border border-slate-800 rounded-xl bg-slate-900/30 flex flex-col items-center justify-center space-y-3">
           <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
@@ -201,6 +221,7 @@ export default function EvalDashboard() {
         </div>
       )}
 
+      {/* Error state */}
       {isError && (
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
@@ -213,7 +234,8 @@ export default function EvalDashboard() {
         </div>
       )}
 
-      {!isLoading && !isError && evalResult && (
+      {/* Content when data loaded */}
+      {!isLoading && !isError && (
         <div className="space-y-6">
           {/* Key Metric Scorecards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -224,7 +246,7 @@ export default function EvalDashboard() {
                 <Award className="h-4 w-4 text-emerald-400" />
               </div>
               <div className="text-3xl font-extrabold font-mono text-emerald-400">
-                {evalResult.pass_at_1 !== null && evalResult.pass_at_1 !== undefined
+                {hasEvalResults && evalResult?.pass_at_1 !== null && evalResult?.pass_at_1 !== undefined
                   ? `${evalResult.pass_at_1.toFixed(1)}%`
                   : 'N/A'}
               </div>
@@ -238,7 +260,7 @@ export default function EvalDashboard() {
                 <CheckCircle2 className="h-4 w-4 text-indigo-400" />
               </div>
               <div className="text-3xl font-extrabold font-mono text-indigo-400">
-                {evalResult.pass_at_5 !== null && evalResult.pass_at_5 !== undefined
+                {hasEvalResults && evalResult?.pass_at_5 !== null && evalResult?.pass_at_5 !== undefined
                   ? `${evalResult.pass_at_5.toFixed(1)}%`
                   : 'N/A'}
               </div>
@@ -252,7 +274,7 @@ export default function EvalDashboard() {
                 <Layers className="h-4 w-4 text-amber-400" />
               </div>
               <div className="text-3xl font-extrabold font-mono text-slate-100">
-                {evalResult.avg_attempts !== null && evalResult.avg_attempts !== undefined
+                {hasEvalResults && evalResult?.avg_attempts !== null && evalResult?.avg_attempts !== undefined
                   ? evalResult.avg_attempts.toFixed(2)
                   : '—'}
               </div>
@@ -266,7 +288,7 @@ export default function EvalDashboard() {
                 <Clock className="h-4 w-4 text-sky-400" />
               </div>
               <div className="text-3xl font-extrabold font-mono text-slate-100">
-                {evalResult.avg_latency_ms !== null && evalResult.avg_latency_ms !== undefined
+                {hasEvalResults && evalResult?.avg_latency_ms !== null && evalResult?.avg_latency_ms !== undefined
                   ? `${evalResult.avg_latency_ms.toFixed(0)}ms`
                   : '—'}
               </div>
@@ -277,37 +299,46 @@ export default function EvalDashboard() {
           {/* Recharts Accuracy Trend */}
           <EvalChart data={chartData} />
 
-          {/* Benchmark Run Metadata Card */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-              <Activity className="h-4 w-4 text-indigo-400" />
-              <span>Latest Evaluation Summary</span>
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono pt-1">
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase">Benchmark</span>
-                <span className="text-slate-200 font-medium">{evalResult.benchmark_name}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase">Problems Tested</span>
-                <span className="text-slate-200 font-medium">
-                  {evalResult.total_problems ?? '0'} problems
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase">Eval ID</span>
-                <span className="text-slate-200 font-medium truncate block" title={evalResult.eval_id}>
-                  {evalResult.eval_id}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase">Executed</span>
-                <span className="text-slate-200 font-medium">
-                  {evalResult.run_at ? new Date(evalResult.run_at).toLocaleString() : 'Recent'}
-                </span>
+          {/* Benchmark Run Metadata Card or Empty State Banner */}
+          {hasEvalResults ? (
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
+              <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <Activity className="h-4 w-4 text-indigo-400" />
+                <span>Latest Evaluation Summary</span>
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono pt-1">
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Benchmark</span>
+                  <span className="text-slate-200 font-medium">{evalResult?.benchmark_name}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Problems Tested</span>
+                  <span className="text-slate-200 font-medium">
+                    {evalResult?.total_problems ?? '0'} problems
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Eval ID</span>
+                  <span className="text-slate-200 font-medium truncate block" title={evalResult?.eval_id}>
+                    {evalResult?.eval_id}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Executed</span>
+                  <span className="text-slate-200 font-medium">
+                    {evalResult?.run_at ? new Date(evalResult.run_at).toLocaleString() : 'Recent'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/30 flex items-center gap-3 text-xs text-slate-400">
+              <HelpCircle className="h-5 w-5 text-indigo-400 shrink-0" />
+              <span>
+                No benchmark runs recorded in <code className="text-slate-300">results/</code> or database yet. Click <strong>Trigger Eval Run</strong> above to start the 50-problem HumanEval evaluation.
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
