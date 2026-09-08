@@ -62,9 +62,9 @@ export default function RunDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-16 border border-border rounded bg-surface flex flex-col items-center justify-center space-y-3">
+      <div className="p-16 border border-border bg-surface flex flex-col items-center justify-center space-y-3">
         <Loader2 className="h-6 w-6 animate-spin text-accent" />
-        <div className="text-xs text-ink-secondary font-mono">Loading run detail for {runId}...</div>
+        <div className="text-xs text-ink-secondary font-mono">loading ledger for {runId}...</div>
       </div>
     )
   }
@@ -74,18 +74,18 @@ export default function RunDetail() {
       <div className="space-y-4">
         <Link
           to="/history"
-          className="inline-flex items-center gap-1.5 text-xs text-ink-secondary hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-mono text-ink-secondary hover:text-ink transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Run History</span>
+          <span>← back to run history</span>
         </Link>
-        <div className="p-6 rounded bg-status-danger-subtle border border-status-danger/30 text-status-danger space-y-2">
-          <div className="flex items-center gap-2 font-semibold">
+        <div className="p-6 bg-status-danger-subtle border border-status-danger/30 text-status-danger space-y-2 font-mono">
+          <div className="flex items-center gap-2 font-bold">
             <AlertCircle className="h-5 w-5" />
-            <span>Run Not Found</span>
+            <span>run record not found</span>
           </div>
-          <div className="text-xs font-mono">
-            {error instanceof Error ? error.message : `No records found in database for run '${runId}'.`}
+          <div className="text-xs">
+            {error instanceof Error ? error.message : `No records found in SQLite database for run '${runId}'.`}
           </div>
         </div>
       </div>
@@ -123,14 +123,14 @@ export default function RunDetail() {
   const pipelineSteps: PipelineStep[] = [
     {
       id: 'generate',
-      name: 'Generate',
-      label: 'Synthesis',
+      name: 'generate',
+      label: 'synthesis',
       state: 'passed',
     },
     {
       id: 'critique',
-      name: 'Critique',
-      label: 'Confidence review',
+      name: 'critique',
+      label: 'confidence review',
       state: isEarlyStopped
         ? 'failed'
         : latestAttempt?.critique_confidence !== null && latestAttempt?.critique_confidence !== undefined
@@ -141,49 +141,49 @@ export default function RunDetail() {
     },
     {
       id: 'test',
-      name: 'Test',
-      label: 'Unit tests',
+      name: 'test',
+      label: 'cgroup sandbox',
       state: latestAttempt?.generated_tests ? 'passed' : !isSuccess ? 'failed' : 'pending',
     },
     {
       id: 'performance',
-      name: 'Performance',
-      label: 'Complexity notes',
+      name: 'performance',
+      label: 'complexity audit',
       state: latestAttempt?.performance_notes ? 'passed' : 'pending',
     },
     {
       id: 'security',
-      name: 'Security Audit',
-      label: 'AST analysis',
+      name: 'security',
+      label: 'ast verification',
       state: latestAttempt?.security_audit ? 'passed' : 'pending',
     },
     {
       id: 'docs',
-      name: 'Document',
-      label: 'Docstrings & types',
+      name: 'document',
+      label: 'docstrings & types',
       state: isSuccess ? 'passed' : 'pending',
     },
   ]
 
   return (
-    <div className="space-y-6">
-      {/* Top navigation */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      {/* Top navigation & action bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
         <Link
           to="/history"
-          className="inline-flex items-center gap-1.5 text-xs text-ink-secondary hover:text-ink transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-mono text-ink-secondary hover:text-ink transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Run History</span>
+          <span>← back to run history</span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {health?.github_configured && (
             <button
               type="button"
               onClick={handleOpenPr}
               disabled={isOpeningPr || (!passingAttempt && !latestAttempt)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-status-success hover:bg-status-success/90 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-status-success hover:bg-status-success/90 text-xs font-mono font-bold text-white uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50"
               title="Open a Pull Request with the verified solution"
             >
               {isOpeningPr ? (
@@ -191,7 +191,7 @@ export default function RunDetail() {
               ) : (
                 <GitPullRequest className="h-3.5 w-3.5" />
               )}
-              <span>{isOpeningPr ? 'Opening PR...' : 'Open PR'}</span>
+              <span>{isOpeningPr ? 'opening pr...' : 'open pr'}</span>
             </button>
           )}
 
@@ -199,21 +199,21 @@ export default function RunDetail() {
             type="button"
             onClick={downloadCode}
             disabled={!passingAttempt && !latestAttempt}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-accent hover:bg-accent-hover text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-xs font-mono font-bold text-white uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50"
             title="Download generated Python code"
           >
             <Download className="h-3.5 w-3.5" />
-            <span>Download .py</span>
+            <span>download .py</span>
           </button>
 
           <button
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-surface hover:bg-canvas border border-border text-xs font-medium text-ink transition-colors cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-sunken border border-border-strong text-xs font-mono text-ink transition-colors cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-accent' : 'text-ink-tertiary'}`} />
-            <span>Refresh</span>
+            <span>refresh</span>
           </button>
         </div>
       </div>
@@ -221,12 +221,12 @@ export default function RunDetail() {
       {/* PR Status Notification */}
       {prResult && (
         <div
-          className={`p-4 rounded border text-xs flex items-center justify-between gap-3 ${
+          className={`p-4 border text-xs flex items-center justify-between gap-3 font-mono ${
             prResult.status === 'success'
-              ? 'bg-status-success-subtle border-status-success/30 text-status-success'
+              ? 'bg-status-success-subtle border-status-success/40 text-status-success'
               : prResult.status === 'skipped'
-              ? 'bg-status-warning-subtle border-status-warning/30 text-status-warning'
-              : 'bg-status-danger-subtle border-status-danger/30 text-status-danger'
+              ? 'bg-status-warning-subtle border-status-warning/40 text-status-warning'
+              : 'bg-status-danger-subtle border-status-danger/40 text-status-danger'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -246,57 +246,59 @@ export default function RunDetail() {
               href={prResult.pr_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 font-semibold underline hover:opacity-80 shrink-0"
+              className="inline-flex items-center gap-1 font-bold underline hover:opacity-80 shrink-0 text-cyan"
             >
-              <span>View PR on GitHub</span>
+              <span>view pr on github</span>
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
         </div>
       )}
 
-      {/* Pipeline Stepper at top */}
+      {/* Full-size Pipeline Stepper with Reticle Corner Brackets */}
       <div className="space-y-2">
-        <div className="text-xs font-medium text-ink-secondary">Pipeline execution state:</div>
+        <div className="text-xs font-mono font-bold uppercase tracking-wider text-ink-secondary">
+          pipeline verification sequence:
+        </div>
         <PipelineStepper steps={pipelineSteps} />
       </div>
 
-      {/* Run Summary Card */}
-      <div className="bg-surface border border-border rounded p-5 space-y-4">
+      {/* Run Summary Instrument Panel */}
+      <div className="bg-surface border border-border p-5 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded bg-surface-sunken border border-border flex items-center justify-center text-accent">
-              <Layers className="h-5 w-5" />
+            <div className="h-9 w-9 bg-surface-sunken border border-border flex items-center justify-center text-accent">
+              <Layers className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-base font-semibold text-ink">{run.run_id}</span>
+                <span className="font-mono text-base font-bold text-ink">{run.run_id}</span>
                 <StatusBadge status={run.final_status} />
               </div>
               <div className="text-xs text-ink-secondary font-mono mt-0.5">
-                Created: {run.created_at ? new Date(run.created_at).toLocaleString() : 'Unknown'}
+                timestamp: {run.created_at ? new Date(run.created_at).toLocaleString() : 'Unknown'}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3 text-xs font-mono">
-            <div className="px-3 py-1.5 rounded bg-surface-sunken border border-border text-center">
-              <span className="text-ink-tertiary block text-[10px]">ATTEMPTS</span>
-              <span className="text-ink font-semibold">{run.total_attempts}</span>
+            <div className="px-3 py-1.5 bg-surface-sunken border border-border text-center">
+              <span className="text-ink-tertiary block text-[10px] uppercase">attempts</span>
+              <span className="text-ink font-bold">{run.total_attempts}</span>
             </div>
-            <div className="px-3 py-1.5 rounded bg-surface-sunken border border-border text-center">
-              <span className="text-ink-tertiary block text-[10px]">TOTAL LATENCY</span>
-              <span className="text-ink font-semibold">{totalLatency}ms</span>
+            <div className="px-3 py-1.5 bg-surface-sunken border border-border text-center">
+              <span className="text-ink-tertiary block text-[10px] uppercase">total latency</span>
+              <span className="text-ink font-bold">{totalLatency}ms</span>
             </div>
           </div>
         </div>
 
         {/* Task description */}
         <div>
-          <div className="text-xs font-medium text-ink-secondary mb-1">
-            Task prompt
+          <div className="text-xs font-mono font-bold uppercase tracking-wider text-ink-secondary mb-1.5">
+            task specification
           </div>
-          <p className="text-xs text-ink font-mono bg-surface-sunken p-3 rounded border border-border leading-relaxed whitespace-pre-wrap">
+          <p className="text-xs text-ink font-mono bg-surface-sunken p-3 border border-border leading-relaxed whitespace-pre-wrap">
             {run.task_description}
           </p>
         </div>
@@ -306,23 +308,23 @@ export default function RunDetail() {
       {latestAttempt?.critique_confidence !== null &&
         latestAttempt?.critique_confidence !== undefined && (
           <div
-            className={`p-4 rounded border flex items-start gap-3.5 text-xs bg-surface ${
+            className={`p-4 border flex items-start gap-3.5 text-xs font-mono bg-surface ${
               isEarlyStopped
-                ? 'border-status-warning/40 bg-status-warning-subtle/30'
+                ? 'border-status-warning/50 bg-status-warning-subtle/30'
                 : 'border-border'
             }`}
           >
             <Scale className="h-4 w-4 shrink-0 text-accent mt-0.5" />
-            <div className="space-y-1 flex-1">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-ink">
-                  Critique confidence analysis
+            <div className="space-y-1 flex-1 font-sans">
+              <div className="flex items-center justify-between font-mono">
+                <span className="font-bold text-ink text-xs uppercase tracking-wider">
+                  critique confidence analysis
                 </span>
-                <span className="font-mono px-2 py-0.5 rounded bg-surface-sunken border border-border text-ink-secondary">
-                  Confidence: {(latestAttempt.critique_confidence * 100).toFixed(0)}%
+                <span className="px-2 py-0.5 bg-surface-sunken border border-border text-ink-secondary text-xs">
+                  confidence: {(latestAttempt.critique_confidence * 100).toFixed(0)}%
                 </span>
               </div>
-              <p className="text-ink-secondary leading-relaxed font-sans max-w-[75ch]">
+              <p className="text-ink-secondary leading-relaxed max-w-[75ch] text-xs pt-1">
                 {isEarlyStopped
                   ? 'Early-stop triggered: The Critique agent assessed confidence below 0.3 threshold, terminating the repair loop early to avoid wasteful token consumption on intractable errors.'
                   : `Critique score ${(latestAttempt.critique_confidence * 100).toFixed(0)}% exceeds the 0.3 threshold. Code passed semantic inspection.`}
@@ -334,32 +336,37 @@ export default function RunDetail() {
       {/* Code diff view between attempts */}
       {run.attempts.length >= 2 && <CodeDiffView attempts={run.attempts} />}
 
-      {/* Attempts Timeline */}
+      {/* Attempts Timeline with Gutter Indexing */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+        <div className="flex items-center justify-between border-b border-border pb-2">
+          <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-ink flex items-center gap-2">
             <Terminal className="h-4 w-4 text-accent" />
-            <span>Attempt timeline ({run.attempts.length})</span>
+            <span>attempt timeline ({run.attempts.length})</span>
           </h2>
           {passingAttempt && (
-            <span className="text-xs text-status-success font-mono">
-              Passed on Attempt #{passingAttempt.attempt_number}
+            <span className="text-xs text-status-success font-mono font-bold">
+              [✓ passed on attempt #{passingAttempt.attempt_number}]
             </span>
           )}
         </div>
 
         {run.attempts.length === 0 ? (
-          <div className="p-8 border border-border rounded bg-surface text-center text-xs text-ink-tertiary">
-            No execution attempts recorded for this run.
+          <div className="p-8 border border-border bg-surface text-center text-xs font-mono text-ink-tertiary">
+            no execution attempts recorded for this run.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {run.attempts.map((attempt) => (
-              <AttemptCard
-                key={attempt.attempt_id ?? attempt.attempt_number}
-                attempt={attempt}
-                defaultExpanded={attempt.attempt_number === run.attempts.length}
-              />
+              <div key={attempt.attempt_id ?? attempt.attempt_number} className="relative pl-6">
+                {/* Attempt index stamped in gutter connection */}
+                <div className="absolute left-0 top-3 font-mono text-xs font-bold text-accent select-none">
+                  0{attempt.attempt_number}
+                </div>
+                <AttemptCard
+                  attempt={attempt}
+                  defaultExpanded={attempt.attempt_number === run.attempts.length}
+                />
+              </div>
             ))}
           </div>
         )}

@@ -92,18 +92,20 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
   const removedCount = diffLines.filter((l) => l.type === 'removed').length
 
   return (
-    <div className="bg-surface border border-border rounded overflow-hidden space-y-0">
+    <div className="bg-surface border border-border overflow-hidden space-y-0 font-mono">
       {/* Diff Header */}
-      <div className="px-5 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-sunken">
+      <div className="px-4 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-sunken">
         <div className="flex items-center gap-2">
           <GitCompare className="h-4 w-4 text-accent" />
-          <h3 className="text-xs font-semibold text-ink">Repair code diff</h3>
+          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-ink">
+            repair verification diff
+          </h3>
           <span className="flex items-center gap-2 ml-2 text-xs font-mono">
-            <span className="text-status-success flex items-center">
+            <span className="text-status-success flex items-center font-bold">
               <Plus className="h-3 w-3 inline" />
               {addedCount}
             </span>
-            <span className="text-status-danger flex items-center">
+            <span className="text-status-danger flex items-center font-bold">
               <Minus className="h-3 w-3 inline" />
               {removedCount}
             </span>
@@ -112,15 +114,15 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
 
         {/* Compare selectors */}
         <div className="flex items-center gap-2 text-xs font-mono">
-          <span className="text-ink-secondary">Comparing:</span>
+          <span className="text-ink-secondary">compare:</span>
           <select
             value={fromAttemptNum}
             onChange={(e) => setFromAttemptNum(Number(e.target.value))}
-            className="bg-surface border border-border text-ink rounded px-2 py-0.5 text-xs focus:outline-none"
+            className="bg-surface border border-border text-ink px-2 py-1 text-xs focus:outline-none"
           >
             {attempts.map((a) => (
               <option key={a.attempt_number} value={a.attempt_number}>
-                Attempt #{a.attempt_number} ({a.success ? 'pass' : 'fail'})
+                attempt 0{a.attempt_number} ({a.success ? 'pass' : 'fail'})
               </option>
             ))}
           </select>
@@ -128,11 +130,11 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
           <select
             value={toAttemptNum}
             onChange={(e) => setToAttemptNum(Number(e.target.value))}
-            className="bg-surface border border-border text-ink rounded px-2 py-0.5 text-xs focus:outline-none"
+            className="bg-surface border border-border text-ink px-2 py-1 text-xs focus:outline-none"
           >
             {attempts.map((a) => (
               <option key={a.attempt_number} value={a.attempt_number}>
-                Attempt #{a.attempt_number} ({a.success ? 'pass' : 'fail'})
+                attempt 0{a.attempt_number} ({a.success ? 'pass' : 'fail'})
               </option>
             ))}
           </select>
@@ -167,7 +169,7 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
                   <td className="w-6 px-1 py-0.5 text-center select-none font-bold">
                     {isAdded ? '+' : isRemoved ? '-' : ' '}
                   </td>
-                  <td className="px-3 py-0.5 whitespace-pre overflow-x-auto">
+                  <td className="px-3 py-0.5 whitespace-pre overflow-x-auto font-mono">
                     {line.text || ' '}
                   </td>
                 </tr>

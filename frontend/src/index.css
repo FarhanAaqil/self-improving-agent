@@ -3,37 +3,76 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #F6F7F9;
+  --color-bg: #F0F3EF;
   --color-surface: #FFFFFF;
-  --color-surface-sunken: #EEF0F3;
-  --color-text-primary: #10182B;
-  --color-text-secondary: #4A5468;
-  --color-text-tertiary: #8891A3;
-  --color-accent: #2E4CE0;
-  --color-accent-hover: #2440C4;
-  --color-accent-subtle: #E8ECFC;
-  --color-success: #1A7F5A;
-  --color-success-subtle: #E4F5EE;
-  --color-warning: #B7791F;
-  --color-warning-subtle: #FBF0DE;
-  --color-danger: #C4432E;
-  --color-danger-subtle: #FBEAE6;
-  --color-border: #E1E4EA;
-  --color-border-strong: #C7CCD6;
+  --color-surface-sunken: #E4E9E2;
+  --color-text-primary: #10241C;
+  --color-text-secondary: #52655A;
+  --color-text-tertiary: #93A399;
+  --color-accent: #FF5A1F;
+  --color-accent-hover: #E44E17;
+  --color-accent-subtle: #FFE8DC;
+  --color-cyan: #0E7C86;
+  --color-success: #1F7A4D;
+  --color-success-subtle: #DFF1E4;
+  --color-warning: #B5790A;
+  --color-warning-subtle: #FBEED6;
+  --color-danger: #C43B2A;
+  --color-danger-subtle: #FBE4DF;
+  --color-rule: #CBD3C7;
+  --color-rule-strong: #9FAD9A;
 }
 
 @layer base {
+  * {
+    border-radius: 0px !important;
+  }
+
   body {
-    background-color: #F6F7F9;
-    color: #10182B;
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   code, pre, kbd {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
   }
+}
+
+/* Ruled Gutter Rail: ~48px wide with tick marks at 28px intervals */
+.ruled-gutter-pattern {
+  background-color: var(--color-surface-sunken);
+  background-image: 
+    linear-gradient(to right, transparent 40px, var(--color-rule-strong) 40px, var(--color-rule-strong) 48px),
+    repeating-linear-gradient(to bottom, transparent, transparent 27px, var(--color-rule) 27px, var(--color-rule) 28px);
+}
+
+.code-gutter-tick {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 23px,
+    var(--color-rule) 23px,
+    var(--color-rule) 24px
+  );
+}
+
+/* Active Pipeline Reticle Breathing Pulse */
+@keyframes bracket-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.85;
+  }
+}
+
+.animate-bracket-breathe {
+  animation: bracket-breathe 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes pulse-underline {

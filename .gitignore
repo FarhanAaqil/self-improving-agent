@@ -1,5 +1,6 @@
 # Planning docs — not part of the shipped repo
 new plan/
+06-UI-DESIGN-SYSTEM.md
 
 # Python
 __pycache__/
@@ -19,18 +20,27 @@ venv/
 env/
 ENV/
 
-# Environment variables
+# Environment variables & secrets
 .env
 .env.*
+.env.local
+.env.*.local
+!.env.example
 
-# Logs
+# Logs & Debug
 logs/
+*.log
 *.jsonl
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# ChromaDB local storage
+# Vector database & memory
 memory_db/
 
-# SQLite databases
+# SQLite databases & journals
 *.db
 *.sqlite
 *.sqlite3
@@ -38,29 +48,46 @@ memory_db/
 *.db-wal
 *.db-shm
 
-# Testing & Tool caches
+# Testing, Coverage & Tool caches
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 .coverage
 .coverage.*
 htmlcov/
+.eslintcache
 
-# OS
+# Node & Frontend
+**/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+*.tsbuildinfo
+
+# OS artifacts
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# IDE
-.vscode/
+# IDE & Editor files
+.vscode/*
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
+*.suo
+*.user
+*.useroscc
+*.sln
+.cursor/
+.windsurf/
 
-# Node (for React frontend)
-node_modules/
-frontend/dist/
-frontend/.env
-
-# Results — intentionally committed, but ignore any local temp files
+# Temporary run artifacts & scratch files
 results/*.tmp
 scratch/
