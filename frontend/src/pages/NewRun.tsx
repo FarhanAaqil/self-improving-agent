@@ -1,5 +1,8 @@
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
-import { AlertCircle, ArrowRight, Play, Sliders } from 'lucide-react'
+import { AlertCircle, ArrowRight, Loader2, Play, Sliders } from 'lucide-react'
+import { generateAndRepair } from '../api/client'
+import type { RunOut } from '../api/types'
 
 export default function NewRun() {
   const [taskDescription, setTaskDescription] = useState('')
@@ -8,6 +11,14 @@ export default function NewRun() {
   const [skipAgents, setSkipAgents] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [activeRun, setActiveRun] = useState<RunOut | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: generateAndRepair,
+    onSuccess: (data) => {
+      setActiveRun(data)
+    },
+  })
 
   const toggleAgent = (agent: string) => {
     setSkipAgents((prev) =>
@@ -26,7 +37,14 @@ export default function NewRun() {
       return
     }
     setValidationError(null)
-    // Submitting will be wired in commit 64
+    setActiveRun(null)
+
+    mutation.mutate({
+      task_description: taskDescription.trim(),
+      model,
+      max_attempts: maxAttempts,
+      skip_agents: skipAgents,
+    })
   }
 
   return (
@@ -82,11 +100,20 @@ export default function NewRun() {
 
             <button
               type="submit"
-              disabled={taskDescription.trim().length < 5}
+              disabled={taskDescription.trim().length < 5 || mutation.isPending}
               className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-sm shadow-indigo-500/20 transition-all cursor-pointer"
             >
-              <Play className="h-4 w-4 fill-white" />
-              <span>Execute Task</span>
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Agent Working...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 fill-white" />
+                  <span>Execute Task</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -147,6 +174,24 @@ export default function NewRun() {
           )}
         </div>
       </form>
+
+      {mutation.isError && (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-rose-400" />
+          <div className="space-y-1">
+            <div className="font-semibold">Execution Failed</div>
+            <div className="text-xs text-rose-300/90 font-mono">
+              {mutation.error instanceof Error ? mutation.error.message : 'Unknown error occurred'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeRun && (
+        <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 text-xs text-slate-400 font-mono">
+          Run {activeRun.run_id} finished with status: {activeRun.final_status} ({activeRun.attempts.length} attempts)
+        </div>
+      )}
     </div>
   )
 }
