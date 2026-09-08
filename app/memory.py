@@ -21,7 +21,7 @@ from app.config import (
     MEMORY_TOP_K,
 )
 
-_client: chromadb.PersistentClient | None = None
+_client: Any = None
 _embed_fn: Any = None
 _collection: Any = None
 
