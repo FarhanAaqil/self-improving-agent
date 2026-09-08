@@ -65,6 +65,15 @@ User Task
 
 ---
 
+## Vector Memory (ChromaDB)
+
+The agent integrates a persistent vector memory layer using local ChromaDB and `all-MiniLM-L6-v2` embeddings:
+- **Failure Storage:** When an attempt terminally fails (`max_retries_exceeded` or `early_stopped`), the task specification, failed code, and execution traceback are stored in the local ChromaDB `failures` collection.
+- **Prompt Injection:** On attempt 1 of future tasks, vector memory is queried for semantically similar historical failures.
+- **0.75 Similarity Threshold:** Only failure memories with cosine similarity **>= 0.75** are injected into the generator prompt under `"PAST FAILURES TO AVOID"` few-shot context. Thresholds below 0.75 risk introducing unrelated code as negative examples.
+
+---
+
 ## Zero-Cost Stack
 
 | Component | Tool | Cost |
