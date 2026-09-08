@@ -36,5 +36,7 @@ RESULTS_DIR = os.path.join(_ROOT, "results")
 HUMANEVAL_SUBSET_SIZE = 50
 
 # ── Deployment ───────────────────────────────────────────────
-DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
+DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "FarhanAaqil/self-improving-agent")

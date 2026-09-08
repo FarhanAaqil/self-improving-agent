@@ -10,6 +10,7 @@ import type {
   GenerateOut,
   GenerateRequest,
   HealthResponse,
+  PrResponse,
   RunOut,
 } from './types'
 
@@ -107,5 +108,14 @@ export function triggerEval(req: EvalRunRequest): Promise<EvalRunOut> {
   return request<EvalRunOut>('/eval/run', {
     method: 'POST',
     body: JSON.stringify(req),
+  })
+}
+
+// ── PR Automation: POST /runs/{run_id}/pr ──
+
+export function openRunPr(runId: string, repo?: string): Promise<PrResponse> {
+  const query = repo ? `?repo=${encodeURIComponent(repo)}` : ''
+  return request<PrResponse>(`/runs/${encodeURIComponent(runId)}/pr${query}`, {
+    method: 'POST',
   })
 }

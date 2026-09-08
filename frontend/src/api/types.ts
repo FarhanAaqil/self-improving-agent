@@ -92,4 +92,15 @@ export interface HealthResponse {
   status: string
   version: string
   docker_available: boolean
+  demo_mode?: boolean
+  github_configured?: boolean
+}
+
+export interface PrResponse {
+  status: string
+  pr_url?: string | null
+  pr_number?: number | null
+  branch?: string | null
+  reason?: string | null
+  error?: string | null
 }

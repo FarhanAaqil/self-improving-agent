@@ -77,10 +77,14 @@ app.add_middleware(
 
 @app.get("/health", tags=["System"])
 def health_check():
+    from app.config import DEMO_MODE
+    from app.github_agent import IS_GITHUB_CONFIGURED
     return {
         "status": "healthy",
         "version": "1.0.0",
         "docker_available": _is_docker_available(),
+        "demo_mode": DEMO_MODE,
+        "github_configured": IS_GITHUB_CONFIGURED,
     }
 
 
@@ -361,6 +365,17 @@ def get_run_endpoint(run_id: str):
 @app.get("/runs", tags=["Runs"])
 def list_runs_endpoint(limit: int = Query(50, ge=1, le=100)):
     return list_runs(limit=limit)
+
+
+# ── PR Automation: POST /runs/{run_id}/pr ───────────────────
+
+@app.post("/runs/{run_id}/pr", tags=["Runs"])
+def create_pull_request_endpoint(run_id: str, repo: Optional[str] = None):
+    from app.github_agent import open_pull_request_for_run
+    result = open_pull_request_for_run(run_id=run_id, repo=repo)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
 
 
 # ── Endpoint 5: GET /eval/latest ─────────────────────────────
