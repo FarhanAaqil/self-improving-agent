@@ -146,3 +146,110 @@ def test_repair_loop_max_retries_exceeded():
         assert data["total_attempts"] == 3
         assert len(data["attempts"]) == 3
         assert gen_mock.call_count == 3
+
+
+def test_skip_all_post_success_agents():
+    """Verify skip_agents=['test', 'performance', 'security_audit', 'docs'] produces identical behavior to pre-agent runs."""
+    original_code = "def solve(): return 42\nprint(solve())"
+    gen_mock = MagicMock(return_value=original_code)
+    run_mock = MagicMock(
+        return_value={
+            "success": True,
+            "error": None,
+            "output": "42\n",
+            "exit_code": 0,
+            "latency_ms": 8,
+        }
+    )
+
+    test_agent_mock = MagicMock()
+    perf_agent_mock = MagicMock()
+    sec_agent_mock = MagicMock()
+    docs_agent_mock = MagicMock()
+    critique_mock = MagicMock()
+
+    with patch("app.main.generate_code", gen_mock), \
+         patch("app.main.run_code", run_mock), \
+         patch("app.main.generate_unit_tests", test_agent_mock), \
+         patch("app.main.analyze_performance", perf_agent_mock), \
+         patch("app.main.CodeSecurityAudit.audit", sec_agent_mock), \
+         patch("app.main.document_code", docs_agent_mock), \
+         patch("app.main.critique_code", critique_mock):
+
+        resp = client.post(
+            "/generate-and-repair",
+            json={
+                "task_description": "Return 42",
+                "max_attempts": 2,
+                "skip_agents": ["test", "performance", "security_audit", "docs", "critique"],
+            },
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["final_status"] == "success"
+        assert data["total_attempts"] == 1
+        attempt = data["attempts"][0]
+        # Verify review agents were skipped
+        assert attempt["generated_tests"] is None
+        assert attempt["performance_notes"] is None
+        assert attempt["security_audit"] is None
+        assert attempt["critique_confidence"] is None
+        assert attempt["critique_reasoning"] is None
+        # Code untouched by documentation agent
+        assert attempt["generated_code"] == original_code
+
+        # None of the review agent mocks were called
+        test_agent_mock.assert_not_called()
+        perf_agent_mock.assert_not_called()
+        sec_agent_mock.assert_not_called()
+        docs_agent_mock.assert_not_called()
+        critique_mock.assert_not_called()
+
+
+def test_post_success_pipeline_populates_review_and_metrics():
+    """Verify that all review agents and metrics populate the passing attempt."""
+    raw_code = "def add(a, b): return a + b"
+    doc_code = "def add(a: int, b: int) -> int:\n    '''Return sum of a and b.'''\n    return a + b"
+
+    gen_mock = MagicMock(return_value=raw_code)
+    run_mock = MagicMock(
+        return_value={
+            "success": True,
+            "error": None,
+            "output": "",
+            "exit_code": 0,
+            "latency_ms": 12,
+        }
+    )
+
+    with patch("app.main.generate_code", gen_mock), \
+         patch("app.main.run_code", run_mock), \
+         patch("app.main.generate_unit_tests", return_value="def test_add(): assert add(1, 2) == 3"), \
+         patch("app.main.analyze_performance", return_value="OPTIMIZED"), \
+         patch("app.main.CodeSecurityAudit.audit", return_value="SECURE"), \
+         patch("app.main.document_code", return_value=doc_code), \
+         patch("app.main.critique_code", return_value={"confidence": 0.95, "reasoning": "Clean logic"}):
+
+        resp = client.post(
+            "/generate-and-repair",
+            json={
+                "task_description": "Write add function",
+                "max_attempts": 2,
+            },
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["final_status"] == "success"
+        attempt = data["attempts"][0]
+        assert attempt["generated_code"] == doc_code
+        assert "test_add" in attempt["generated_tests"]
+        assert attempt["performance_notes"] == "OPTIMIZED"
+        assert attempt["security_audit"] == "SECURE"
+        assert attempt["critique_confidence"] == 0.95
+        assert attempt["critique_reasoning"] == "Clean logic"
+        assert attempt["quality_overall_score"] is not None
+        assert attempt["quality_overall_score"] > 0.8
+        assert "cyclomatic_complexity" in attempt["quality_report_json"]
+
