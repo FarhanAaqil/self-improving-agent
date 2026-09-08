@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCircle2,
   Download,
+  ExternalLink,
+  GitPullRequest,
   Layers,
   Loader2,
   RefreshCw,
@@ -10,8 +14,8 @@ import {
   Terminal,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { getRun } from '../api/client'
-import type { RunOut } from '../api/types'
+import { getHealth, getRun, openRunPr } from '../api/client'
+import type { PrResponse, RunOut } from '../api/types'
 import AttemptCard from '../components/AttemptCard'
 import CodeDiffView from '../components/CodeDiffView'
 import StatusBadge from '../components/StatusBadge'
@@ -31,6 +35,29 @@ export default function RunDetail() {
     queryFn: () => getRun(runId!),
     enabled: Boolean(runId),
   })
+
+  const { data: health } = useQuery({
+    queryKey: ['health'],
+    queryFn: getHealth,
+  })
+
+  const [isOpeningPr, setIsOpeningPr] = useState(false)
+  const [prResult, setPrResult] = useState<PrResponse | null>(null)
+
+  const handleOpenPr = async () => {
+    if (!run) return
+    setIsOpeningPr(true)
+    setPrResult(null)
+    try {
+      const res = await openRunPr(run.run_id)
+      setPrResult(res)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to open PR'
+      setPrResult({ status: 'error', error: msg })
+    } finally {
+      setIsOpeningPr(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -103,6 +130,23 @@ export default function RunDetail() {
         </Link>
 
         <div className="flex items-center gap-2">
+          {health?.github_configured && (
+            <button
+              type="button"
+              onClick={handleOpenPr}
+              disabled={isOpeningPr || (!passingAttempt && !latestAttempt)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white shadow-sm shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+              title="Open a Pull Request with the verified solution"
+            >
+              {isOpeningPr ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <GitPullRequest className="h-3.5 w-3.5" />
+              )}
+              <span>{isOpeningPr ? 'Opening PR...' : 'Open PR'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={downloadCode}
@@ -125,6 +169,43 @@ export default function RunDetail() {
           </button>
         </div>
       </div>
+
+      {/* PR Status Banner */}
+      {prResult && (
+        <div
+          className={`p-4 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+            prResult.status === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : prResult.status === 'skipped'
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {prResult.status === 'success' ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {prResult.status === 'success'
+                ? `Pull Request #${prResult.pr_number} created successfully on branch ${prResult.branch}!`
+                : prResult.error || prResult.reason || 'GitHub PR action completed.'}
+            </span>
+          </div>
+          {prResult.pr_url && (
+            <a
+              href={prResult.pr_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-semibold underline text-emerald-400 hover:text-emerald-300 shrink-0"
+            >
+              <span>View PR on GitHub</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Run Summary Header Card */}
       <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">

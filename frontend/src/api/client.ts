@@ -10,6 +10,7 @@ import type {
   GenerateOut,
   GenerateRequest,
   HealthResponse,
+  PrResponse,
   RunOut,
 } from './types'
 
@@ -29,9 +30,15 @@ class ApiError extends Error {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`
-  const headers = {
+  const apiKey =
+    typeof window !== 'undefined'
+      ? (localStorage.getItem('agent_api_key') || (import.meta.env.VITE_API_KEY as string | undefined))
+      : undefined
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+    ...((options.headers as Record<string, string>) || {}),
   }
 
   const res = await fetch(url, { ...options, headers })
@@ -107,5 +114,14 @@ export function triggerEval(req: EvalRunRequest): Promise<EvalRunOut> {
   return request<EvalRunOut>('/eval/run', {
     method: 'POST',
     body: JSON.stringify(req),
+  })
+}
+
+// ── PR Automation: POST /runs/{run_id}/pr ──
+
+export function openRunPr(runId: string, repo?: string): Promise<PrResponse> {
+  const query = repo ? `?repo=${encodeURIComponent(repo)}` : ''
+  return request<PrResponse>(`/runs/${encodeURIComponent(runId)}/pr${query}`, {
+    method: 'POST',
   })
 }

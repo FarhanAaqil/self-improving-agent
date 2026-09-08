@@ -104,6 +104,18 @@ export default function Layout() {
           </div>
         </header>
 
+        {/* Demo Mode Banner */}
+        {health?.demo_mode && (
+          <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2 text-xs text-amber-300 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 font-mono font-bold uppercase text-[10px]">
+                Demo Mode
+              </span>
+              <span>This is a sandbox demonstration instance, not hardened production infrastructure.</span>
+            </div>
+          </div>
+        )}
+
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <div className="max-w-6xl mx-auto">
             <Outlet />

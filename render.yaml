@@ -1,0 +1,32 @@
+# render.yaml
+# ─────────────────────────────────────────────────────────────
+# Render Web Service deployment configuration.
+# Explicitly labeled as a DEMO deployment.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: self-improving-code-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: MODEL
+        value: "llama-3.3-70b-versatile"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SANDBOX_TIMEOUT
+        value: "10"
+      - key: CRITIQUE_CONFIDENCE_THRESHOLD
+        value: "0.3"
+      - key: GITHUB_REPO
+        value: "FarhanAaqil/self-improving-agent"
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: ALLOW_UNSAFE_HOST_SUBPROCESS
+        value: "false"
+      - key: API_KEY
+        sync: false

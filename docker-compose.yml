@@ -27,6 +27,8 @@ services:
       - DB_PATH=/data/agent.db
       - MEMORY_DIR=/data/memory_db
       - DEMO_MODE=${DEMO_MODE:-false}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-FarhanAaqil/self-improving-agent}
     volumes:
       # Host Docker socket — required for sibling-container sandbox execution.
       # See security note above.

@@ -5,7 +5,7 @@ import tempfile
 import time
 import uuid
 
-from app.config import SANDBOX_TIMEOUT
+from app.config import ALLOW_UNSAFE_HOST_SUBPROCESS, SANDBOX_TIMEOUT
 
 SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "python:3.11-slim")
 
@@ -37,6 +37,18 @@ def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
 
     try:
         if not _is_docker_available():
+            if not ALLOW_UNSAFE_HOST_SUBPROCESS:
+                return {
+                    "success": False,
+                    "output": None,
+                    "error": (
+                        "Execution rejected: Docker daemon is unavailable and unprivileged host "
+                        "execution is disabled (ALLOW_UNSAFE_HOST_SUBPROCESS=false)."
+                    ),
+                    "exit_code": -1,
+                    "latency_ms": 0,
+                    "sandboxed": False,
+                }
             return _run_subprocess_fallback(tmp_script, timeout)
         return _run_docker(tmp_script, timeout)
     finally:
