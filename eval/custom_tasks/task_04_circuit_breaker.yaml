@@ -1,0 +1,31 @@
+task_id: custom_04_circuit_breaker
+name: Circuit Breaker State Machine
+prompt: 'Implement a class `CircuitBreaker` with `failure_threshold: int` and `recovery_timeout:
+  float`.
+
+  State starts ''CLOSED''. When failures >= threshold, transition to ''OPEN''.
+
+  `can_execute(current_time: float) -> bool` returns True if CLOSED, or if OPEN and
+  current_time >= last_failure + recovery_timeout (transitions to ''HALF_OPEN'').
+
+  `record_success()` resets to ''CLOSED''. `record_failure(current_time: float)` increments
+  failure count.'
+test: 'cb = CircuitBreaker(failure_threshold=2, recovery_timeout=10.0)
+
+  assert cb.can_execute(0.0) is True
+
+  cb.record_failure(0.0)
+
+  assert cb.can_execute(1.0) is True
+
+  cb.record_failure(2.0)
+
+  assert cb.can_execute(5.0) is False
+
+  assert cb.can_execute(13.0) is True
+
+  cb.record_success()
+
+  assert cb.can_execute(14.0) is True
+
+  '

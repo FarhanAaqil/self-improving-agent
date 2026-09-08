@@ -1,0 +1,10 @@
+task_id: custom_10_bounded_queue
+name: Thread-Safe Bounded Queue
+prompt: 'Implement a class `BoundedQueue` with maxsize, `put(item, timeout=None)`
+  and `get(timeout=None)`
+
+  using threading.Lock and threading.Condition. Raise TimeoutError if timeout expires.'
+test: "q = BoundedQueue(maxsize=2)\nassert q.put(1, timeout=0.1) is True\nassert q.put(2,\
+  \ timeout=0.1) is True\ntry:\n    q.put(3, timeout=0.05)\n    assert False, 'Should\
+  \ timeout'\nexcept TimeoutError:\n    pass\nassert q.get(timeout=0.1) == 1\nassert\
+  \ q.get(timeout=0.1) == 2\n"

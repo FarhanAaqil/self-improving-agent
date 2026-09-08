@@ -1,0 +1,19 @@
+task_id: custom_03_json_path
+name: Deep Nested JSON Path Extractor
+prompt: 'Write a function `get_json_path(data: dict, path: str, default=None)` that
+  extracts nested values
+
+  using dot notation and array indexes (e.g. ''user.profiles[0].email''). Return default
+  if missing.'
+test: 'data = {''user'': {''profiles'': [{''email'': ''dev@example.com''}, {''email'':
+  ''test@example.com''}]}}
+
+  assert get_json_path(data, ''user.profiles[0].email'') == ''dev@example.com''
+
+  assert get_json_path(data, ''user.profiles[1].email'') == ''test@example.com''
+
+  assert get_json_path(data, ''user.profiles[2].email'', ''missing'') == ''missing''
+
+  assert get_json_path(data, ''user.address.street'', None) is None
+
+  '

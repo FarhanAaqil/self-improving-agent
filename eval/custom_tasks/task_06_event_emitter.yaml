@@ -1,0 +1,29 @@
+task_id: custom_06_event_emitter
+name: PubSub Event Emitter
+prompt: 'Implement a class `EventEmitter` with methods `on(event, handler)`, `emit(event,
+  *args, **kwargs)`,
+
+  and `off(event, handler)` supporting multiple listener registrations.'
+test: 'ee = EventEmitter()
+
+  logs = []
+
+  def h1(val): logs.append(f''h1:{val}'')
+
+  def h2(val): logs.append(f''h2:{val}'')
+
+  ee.on(''ping'', h1)
+
+  ee.on(''ping'', h2)
+
+  ee.emit(''ping'', 42)
+
+  assert logs == [''h1:42'', ''h2:42'']
+
+  ee.off(''ping'', h1)
+
+  ee.emit(''ping'', 99)
+
+  assert logs == [''h1:42'', ''h2:42'', ''h2:99'']
+
+  '

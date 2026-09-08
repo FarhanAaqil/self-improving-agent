@@ -1,0 +1,20 @@
+task_id: custom_12_schema_validator
+name: Dictionary Schema Validator
+prompt: 'Write a function `validate_schema(data: dict, schema: dict) -> tuple[bool,
+  list[str]]`
+
+  where schema specifies required keys and types (e.g. {''name'': str, ''age'': int,
+  ''optional?'': bool}).
+
+  Returns (is_valid, list_of_errors).'
+test: 'schema = {''username'': str, ''age'': int, ''active?'': bool}
+
+  valid, errs = validate_schema({''username'': ''alex'', ''age'': 28}, schema)
+
+  assert valid is True and len(errs) == 0
+
+  valid2, errs2 = validate_schema({''username'': 123}, schema)
+
+  assert valid2 is False and len(errs2) >= 2
+
+  '

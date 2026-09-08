@@ -1,0 +1,10 @@
+task_id: custom_09_topological_sort
+name: Dependency Resolution DAG
+prompt: 'Write a function `resolve_dependencies(graph: dict[str, list[str]]) -> list[str]`
+
+  returning a valid topological resolution order. Raise ValueError(''Cycle detected'')
+  on circular dependencies.'
+test: "deps = {'app': ['auth', 'db'], 'auth': ['db'], 'db': []}\norder = resolve_dependencies(deps)\n\
+  assert order.index('db') < order.index('auth')\nassert order.index('auth') < order.index('app')\n\
+  cycle = {'a': ['b'], 'b': ['c'], 'c': ['a']}\ntry:\n    resolve_dependencies(cycle)\n\
+  \    assert False, 'Should raise'\nexcept ValueError:\n    pass\n"

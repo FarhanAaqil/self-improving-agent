@@ -1,0 +1,10 @@
+task_id: custom_13_memoize_ttl
+name: TTL Cache Decorator
+prompt: 'Implement a decorator `memoize_ttl(ttl_seconds: float)` that caches function
+  returns for the specified time.
+
+  Accepts optional `current_time: float` keyword argument or uses time.time().'
+test: "calls = 0\n@memoize_ttl(ttl_seconds=5.0)\ndef expensive(x, current_time=0.0):\n\
+  \    nonlocal calls\n    calls += 1\n    return x * 2\nassert expensive(5, current_time=0.0)\
+  \ == 10\nassert expensive(5, current_time=2.0) == 10\nassert calls == 1\nassert\
+  \ expensive(5, current_time=6.0) == 10\nassert calls == 2\n"

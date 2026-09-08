@@ -1,0 +1,10 @@
+task_id: custom_07_csv_filter
+name: CSV In-Memory Predicate Filter
+prompt: 'Write a function `filter_records(records: list[dict], conditions: dict)`
+  where conditions map keys
+
+  to expected values or callable predicates. Returns only records matching all conditions.'
+test: "records = [\n    {'id': 1, 'role': 'admin', 'age': 30},\n    {'id': 2, 'role':\
+  \ 'user', 'age': 22},\n    {'id': 3, 'role': 'user', 'age': 35},\n]\nres = filter_records(records,\
+  \ {'role': 'user', 'age': lambda a: a > 30})\nassert len(res) == 1\nassert res[0]['id']\
+  \ == 3\n"
