@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   Code2,
+  Download,
   ExternalLink,
   Layers,
   Loader2,
@@ -80,6 +81,20 @@ export default function RunDetail() {
     latestAttempt.critique_confidence < 0.3 &&
     !latestAttempt.success
 
+  const downloadCode = () => {
+    const targetCode = passingAttempt?.generated_code || latestAttempt?.generated_code
+    if (!targetCode) return
+    const blob = new Blob([targetCode], { type: 'text/x-python;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${run.run_id}_solution.py`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       {/* Top navigation */}
@@ -92,15 +107,28 @@ export default function RunDetail() {
           <span>Back to Run History</span>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-indigo-400' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={downloadCode}
+            disabled={!passingAttempt && !latestAttempt}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-sm shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+            title="Download generated Python code"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Download .py</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-indigo-400' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Run Summary Header Card */}
