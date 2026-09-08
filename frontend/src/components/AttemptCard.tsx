@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  AlertOctagon,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -41,36 +40,36 @@ export default function AttemptCard({ attempt, defaultExpanded = true }: Attempt
 
   return (
     <div
-      className={`border rounded-xl transition-all duration-150 overflow-hidden ${
+      className={`border rounded transition-all duration-150 overflow-hidden bg-surface ${
         attempt.success
-          ? 'border-emerald-500/30 bg-slate-900/70 shadow-sm shadow-emerald-500/5'
-          : 'border-slate-800 bg-slate-900/40'
+          ? 'border-status-success/40'
+          : 'border-border'
       }`}
     >
       {/* Card Header */}
       <div
         onClick={() => setExpanded(!expanded)}
-        className="px-4 py-3 bg-slate-900/90 flex items-center justify-between cursor-pointer hover:bg-slate-850 select-none border-b border-slate-800/80"
+        className="px-4 py-3 bg-surface flex items-center justify-between cursor-pointer hover:bg-canvas select-none border-b border-border"
       >
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="text-slate-400 hover:text-slate-200 transition-colors p-0.5"
+            className="text-ink-secondary hover:text-ink transition-colors p-0.5"
           >
             {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
 
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm text-slate-100">
+            <span className="font-semibold text-sm text-ink">
               Attempt #{attempt.attempt_number}
             </span>
             {attempt.success ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[2px] text-xs font-medium bg-status-success-subtle text-status-success border border-status-success/30">
                 <CheckCircle2 className="h-3 w-3" />
                 Passed Sandbox
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[2px] text-xs font-medium bg-status-danger-subtle text-status-danger border border-status-danger/30">
                 <XCircle className="h-3 w-3" />
                 Execution Failed
               </span>
@@ -78,14 +77,14 @@ export default function AttemptCard({ attempt, defaultExpanded = true }: Attempt
           </div>
         </div>
 
-        {/* Telemetry metadata chips */}
+        {/* Telemetry metadata */}
         <div className="flex items-center gap-2 text-xs font-mono">
           {attempt.exit_code !== null && attempt.exit_code !== undefined && (
             <span
-              className={`px-1.5 py-0.5 rounded border ${
+              className={`px-1.5 py-0.5 rounded-[2px] border ${
                 attempt.exit_code === 0
-                  ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-400'
-                  : 'bg-rose-950/40 border-rose-800/60 text-rose-400'
+                  ? 'bg-status-success-subtle border-status-success/30 text-status-success'
+                  : 'bg-status-danger-subtle border-status-danger/30 text-status-danger'
               }`}
             >
               exit: {attempt.exit_code}
@@ -93,16 +92,9 @@ export default function AttemptCard({ attempt, defaultExpanded = true }: Attempt
           )}
 
           {attempt.latency_ms !== null && attempt.latency_ms !== undefined && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700/80 text-slate-300">
-              <Clock className="h-3 w-3 text-slate-400" />
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] bg-surface-sunken border border-border text-ink-secondary">
+              <Clock className="h-3 w-3 text-ink-tertiary" />
               {attempt.latency_ms}ms
-            </span>
-          )}
-
-          {attempt.model_name && (
-            <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-400">
-              <Cpu className="h-3 w-3 text-slate-500" />
-              {attempt.model_name.replace('llama-', '')}
             </span>
           )}
         </div>
@@ -110,65 +102,67 @@ export default function AttemptCard({ attempt, defaultExpanded = true }: Attempt
 
       {/* Card Body */}
       {expanded && (
-        <div>
-          {/* Section Tabs */}
-          <div className="flex border-b border-slate-800 bg-slate-950/60 px-4 text-xs">
-            <button
-              type="button"
-              onClick={() => setActiveTab('code')}
-              className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium transition-colors ${
-                activeTab === 'code'
-                  ? 'border-indigo-500 text-indigo-300'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <FileCode className="h-3.5 w-3.5" />
-              Generated Code
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('output')}
-              className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium transition-colors ${
-                activeTab === 'output'
-                  ? 'border-indigo-500 text-indigo-300'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Terminal className="h-3.5 w-3.5" />
-              Sandbox Output
-              {(attempt.stderr || !attempt.success) && (
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-              )}
-            </button>
-            {hasReviews && (
+        <div className="p-4 space-y-3 bg-surface">
+          {/* Tabs */}
+          <div className="flex items-center justify-between border-b border-border pb-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setActiveTab('reviews')}
-                className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium transition-colors ${
-                  activeTab === 'reviews'
-                    ? 'border-indigo-500 text-indigo-300'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                onClick={() => setActiveTab('code')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-[2px] transition-colors ${
+                  activeTab === 'code'
+                    ? 'bg-accent-subtle text-accent border border-accent/30'
+                    : 'text-ink-secondary hover:text-ink hover:bg-canvas'
                 }`}
               >
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Review & Analysis
+                <FileCode className="h-3.5 w-3.5" />
+                <span>Generated Code</span>
               </button>
-            )}
-          </div>
 
-          {/* Tab 1: Code */}
-          {activeTab === 'code' && (
-            <div className="relative group">
+              <button
+                type="button"
+                onClick={() => setActiveTab('output')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-[2px] transition-colors ${
+                  activeTab === 'output'
+                    ? 'bg-accent-subtle text-accent border border-accent/30'
+                    : 'text-ink-secondary hover:text-ink hover:bg-canvas'
+                }`}
+              >
+                <Terminal className="h-3.5 w-3.5" />
+                <span>Stdout / Stderr</span>
+              </button>
+
+              {hasReviews && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('reviews')}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-[2px] transition-colors ${
+                    activeTab === 'reviews'
+                      ? 'bg-accent-subtle text-accent border border-accent/30'
+                      : 'text-ink-secondary hover:text-ink hover:bg-canvas'
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>Agent Reviews</span>
+                  {attempt.quality_overall_score && (
+                    <span className="font-mono text-[10px] px-1 rounded bg-accent/15 text-accent font-bold">
+                      {attempt.quality_overall_score.toFixed(1)}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {activeTab === 'code' && (
               <button
                 type="button"
                 onClick={copyCode}
-                className="absolute top-2.5 right-2.5 z-10 px-2 py-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 border border-slate-700 transition-all opacity-80 group-hover:opacity-100 cursor-pointer"
-                title="Copy code"
+                className="inline-flex items-center gap-1 text-xs text-ink-secondary hover:text-ink transition-colors px-2 py-0.5 rounded border border-border bg-surface hover:bg-canvas cursor-pointer"
               >
                 {copied ? (
                   <>
-                    <Check className="h-3 w-3 text-emerald-400" />
-                    <span className="text-emerald-400">Copied</span>
+                    <Check className="h-3 w-3 text-status-success" />
+                    <span className="text-status-success">Copied</span>
                   </>
                 ) : (
                   <>
@@ -177,21 +171,27 @@ export default function AttemptCard({ attempt, defaultExpanded = true }: Attempt
                   </>
                 )}
               </button>
-              <pre className="p-4 bg-slate-950 font-mono text-xs text-slate-200 overflow-x-auto leading-relaxed selection:bg-indigo-500/30">
+            )}
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'code' && (
+            <div className="relative">
+              <pre className="p-3.5 rounded-[2px] bg-surface-sunken border border-border text-xs font-mono text-ink overflow-x-auto leading-relaxed max-h-96">
                 <code>{attempt.generated_code}</code>
               </pre>
             </div>
           )}
 
-          {/* Tab 2: Output */}
           {activeTab === 'output' && (
-            <div className="p-4 bg-slate-950/95 font-mono text-xs space-y-3">
+            <div className="space-y-2">
               {attempt.stdout && (
                 <div>
-                  <div className="text-[11px] font-semibold text-emerald-400 mb-1 flex items-center gap-1">
-                    <Terminal className="h-3 w-3" /> Standard Output:
+                  <div className="text-[11px] font-mono text-status-success mb-1 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    <span>Standard Output</span>
                   </div>
-                  <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 overflow-x-auto whitespace-pre-wrap">
+                  <pre className="p-3 rounded-[2px] bg-surface-sunken border border-border text-xs font-mono text-ink overflow-x-auto whitespace-pre-wrap max-h-60">
                     {attempt.stdout}
                   </pre>
                 </div>
@@ -199,63 +199,80 @@ export default function AttemptCard({ attempt, defaultExpanded = true }: Attempt
 
               {attempt.stderr && (
                 <div>
-                  <div className="text-[11px] font-semibold text-rose-400 mb-1 flex items-center gap-1">
-                    <AlertOctagon className="h-3 w-3" /> Standard Error / Traceback:
+                  <div className="text-[11px] font-mono text-status-danger mb-1 flex items-center gap-1">
+                    <XCircle className="h-3 w-3" />
+                    <span>Standard Error</span>
                   </div>
-                  <pre className="p-3 rounded-lg bg-rose-950/30 border border-rose-900/40 text-rose-200 overflow-x-auto whitespace-pre-wrap">
+                  <pre className="p-3 rounded-[2px] bg-surface-sunken border border-status-danger/30 text-xs font-mono text-status-danger overflow-x-auto whitespace-pre-wrap max-h-60 border-t-2 border-t-status-danger">
                     {attempt.stderr}
                   </pre>
                 </div>
               )}
 
               {!attempt.stdout && !attempt.stderr && (
-                <div className="text-slate-500 italic py-2">No console output produced by process.</div>
+                <div className="p-4 text-center text-xs text-ink-tertiary bg-surface-sunken rounded-[2px] border border-border">
+                  No terminal output recorded for this attempt.
+                </div>
               )}
             </div>
           )}
 
-          {/* Tab 3: Reviews */}
-          {activeTab === 'reviews' && hasReviews && (
-            <div className="p-4 bg-slate-950 space-y-4 text-xs">
+          {activeTab === 'reviews' && (
+            <div className="space-y-3">
+              {/* Critique Reasoning */}
               {attempt.critique_confidence !== null && attempt.critique_confidence !== undefined && (
-                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-900/70 border border-slate-800">
-                  <span className="text-slate-300 font-medium">Critique Confidence:</span>
-                  <span className="font-mono font-semibold text-indigo-400">
-                    {(attempt.critique_confidence * 100).toFixed(0)}%
-                  </span>
+                <div className="p-3 rounded-[2px] bg-surface-sunken border border-border space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-ink flex items-center gap-1.5">
+                      <Cpu className="h-3.5 w-3.5 text-accent" />
+                      Critique Assessment
+                    </span>
+                    <span className="font-mono text-xs text-ink-secondary">
+                      Confidence: {(attempt.critique_confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-ink-secondary leading-relaxed max-w-[75ch]">
+                    {attempt.critique_reasoning || 'No critique reasoning provided.'}
+                  </p>
                 </div>
               )}
 
+              {/* Unit Tests */}
               {attempt.generated_tests && (
-                <div className="space-y-1">
-                  <span className="font-semibold text-slate-300 flex items-center gap-1">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Synthesized Unit Tests
-                  </span>
-                  <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                <div className="p-3 rounded-[2px] bg-surface-sunken border border-border space-y-1.5">
+                  <div className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-status-warning" />
+                    Synthesized Unit Tests
+                  </div>
+                  <pre className="p-2.5 rounded-[2px] bg-surface border border-border text-[11px] font-mono text-ink overflow-x-auto max-h-48">
                     {attempt.generated_tests}
                   </pre>
                 </div>
               )}
 
+              {/* Performance Analysis */}
               {attempt.performance_notes && (
-                <div className="space-y-1">
-                  <span className="font-semibold text-slate-300 flex items-center gap-1">
-                    <Zap className="h-3.5 w-3.5 text-amber-400" /> Performance Analysis
-                  </span>
-                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 whitespace-pre-wrap">
-                    {attempt.performance_notes}
+                <div className="p-3 rounded-[2px] bg-surface-sunken border border-border space-y-1">
+                  <div className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-accent" />
+                    Performance & Complexity
                   </div>
+                  <p className="text-xs text-ink-secondary leading-relaxed max-w-[75ch]">
+                    {attempt.performance_notes}
+                  </p>
                 </div>
               )}
 
+              {/* Security Audit */}
               {attempt.security_audit && (
-                <div className="space-y-1">
-                  <span className="font-semibold text-slate-300 flex items-center gap-1">
-                    <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Code Security Audit
-                  </span>
-                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 whitespace-pre-wrap">
-                    {attempt.security_audit}
+                <div className="p-3 rounded-[2px] bg-surface-sunken border border-border space-y-1">
+                  <div className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5 text-status-success" />
+                    Static Security Audit
                   </div>
+                  <p className="text-xs text-ink-secondary leading-relaxed max-w-[75ch]">
+                    {attempt.security_audit}
+                  </p>
                 </div>
               )}
             </div>

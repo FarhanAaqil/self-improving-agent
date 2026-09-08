@@ -33,10 +33,8 @@ function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
         oldIdx++
         newIdx++
       } else {
-        // Lookahead check to see if current old line appears soon in newLines
         const foundInNew = newLines.slice(newIdx, newIdx + 4).indexOf(oldLines[oldIdx])
         if (foundInNew !== -1) {
-          // Lines were added in new
           for (let i = 0; i < foundInNew; i++) {
             result.push({
               type: 'added',
@@ -94,18 +92,18 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
   const removedCount = diffLines.filter((l) => l.type === 'removed').length
 
   return (
-    <div className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden shadow-sm space-y-0">
+    <div className="bg-surface border border-border rounded overflow-hidden space-y-0">
       {/* Diff Header */}
-      <div className="px-5 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/60">
+      <div className="px-5 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-sunken">
         <div className="flex items-center gap-2">
-          <GitCompare className="h-4 w-4 text-indigo-400" />
-          <h3 className="text-sm font-semibold text-slate-100">Repair Code Diff</h3>
+          <GitCompare className="h-4 w-4 text-accent" />
+          <h3 className="text-xs font-semibold text-ink">Repair code diff</h3>
           <span className="flex items-center gap-2 ml-2 text-xs font-mono">
-            <span className="text-emerald-400 flex items-center">
+            <span className="text-status-success flex items-center">
               <Plus className="h-3 w-3 inline" />
               {addedCount}
             </span>
-            <span className="text-rose-400 flex items-center">
+            <span className="text-status-danger flex items-center">
               <Minus className="h-3 w-3 inline" />
               {removedCount}
             </span>
@@ -114,11 +112,11 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
 
         {/* Compare selectors */}
         <div className="flex items-center gap-2 text-xs font-mono">
-          <span className="text-slate-400">Comparing:</span>
+          <span className="text-ink-secondary">Comparing:</span>
           <select
             value={fromAttemptNum}
             onChange={(e) => setFromAttemptNum(Number(e.target.value))}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-1 text-xs"
+            className="bg-surface border border-border text-ink rounded px-2 py-0.5 text-xs focus:outline-none"
           >
             {attempts.map((a) => (
               <option key={a.attempt_number} value={a.attempt_number}>
@@ -126,11 +124,11 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
               </option>
             ))}
           </select>
-          <span className="text-slate-500">→</span>
+          <span className="text-ink-tertiary">→</span>
           <select
             value={toAttemptNum}
             onChange={(e) => setToAttemptNum(Number(e.target.value))}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-1 text-xs"
+            className="bg-surface border border-border text-ink rounded px-2 py-0.5 text-xs focus:outline-none"
           >
             {attempts.map((a) => (
               <option key={a.attempt_number} value={a.attempt_number}>
@@ -142,7 +140,7 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
       </div>
 
       {/* Diff Lines Table */}
-      <div className="overflow-x-auto max-h-[480px] bg-slate-950 font-mono text-xs">
+      <div className="overflow-x-auto max-h-[440px] bg-surface font-mono text-xs">
         <table className="w-full border-collapse">
           <tbody>
             {diffLines.map((line, idx) => {
@@ -154,22 +152,22 @@ export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
                   key={idx}
                   className={`leading-relaxed ${
                     isAdded
-                      ? 'bg-emerald-950/25 text-emerald-200'
+                      ? 'bg-status-success-subtle text-status-success'
                       : isRemoved
-                        ? 'bg-rose-950/25 text-rose-200'
-                        : 'text-slate-300 hover:bg-slate-900/40'
+                      ? 'bg-status-danger-subtle text-status-danger'
+                      : 'text-ink hover:bg-surface-sunken'
                   }`}
                 >
-                  <td className="w-10 px-2 py-0.5 text-right select-none text-[11px] text-slate-600 border-r border-slate-900">
+                  <td className="w-10 px-2 py-0.5 text-right select-none text-[11px] text-ink-tertiary border-r border-border">
                     {line.oldLineNum || ''}
                   </td>
-                  <td className="w-10 px-2 py-0.5 text-right select-none text-[11px] text-slate-600 border-r border-slate-900">
+                  <td className="w-10 px-2 py-0.5 text-right select-none text-[11px] text-ink-tertiary border-r border-border">
                     {line.newLineNum || ''}
                   </td>
                   <td className="w-6 px-1 py-0.5 text-center select-none font-bold">
                     {isAdded ? '+' : isRemoved ? '-' : ' '}
                   </td>
-                  <td className="px-3 py-0.5 whitespace-pre overflow-x-auto selection:bg-indigo-500/30">
+                  <td className="px-3 py-0.5 whitespace-pre overflow-x-auto">
                     {line.text || ' '}
                   </td>
                 </tr>
