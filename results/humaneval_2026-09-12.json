@@ -1,0 +1,513 @@
+{
+  "eval_id": "humaneval_2026-09-12",
+  "benchmark": "humaneval",
+  "date": "2026-09-12",
+  "model": "llama-3.3-70b-versatile",
+  "total_problems": 50,
+  "pass_at_1": 88.0,
+  "pass_at_5": 96.0,
+  "avg_attempts": 1.18,
+  "avg_latency_ms": 62.2,
+  "results": [
+    {
+      "task_id": "HE-001",
+      "entry_point": "has_close_elements",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 77,
+      "final_code": "def has_close_elements(numbers: list, threshold: float) -> bool:\n    for i in range(len(numbers)):\n        for j in range(i + 1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False\n"
+    },
+    {
+      "task_id": "HE-002",
+      "entry_point": "truncate_number",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def truncate_number(number: float) -> float:\n    return number % 1.0\n"
+    },
+    {
+      "task_id": "HE-003",
+      "entry_point": "below_zero",
+      "difficulty": "easy",
+      "passed": false,
+      "passed_at_attempt": null,
+      "attempts_used": 3,
+      "latency_ms": 62,
+      "final_code": "def below_zero(operations: list) -> bool:\n    balance = 0\n    for op in operations:\n        balance += op\n        if balance < 0:\n            return True\n    return False\n"
+    },
+    {
+      "task_id": "HE-004",
+      "entry_point": "mean_absolute_deviation",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def mean_absolute_deviation(numbers: list) -> float:\n    if not numbers:\n        return 0.0\n    mean = sum(numbers) / len(numbers)\n    return sum(abs(x - mean) for x in numbers) / len(numbers)\n"
+    },
+    {
+      "task_id": "HE-005",
+      "entry_point": "intersperse",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def intersperse(numbers: list, delimeter: int) -> list:\n    if not numbers:\n        return []\n    res = []\n    for x in numbers[:-1]:\n        res.append(x)\n        res.append(delimeter)\n    res.append(numbers[-1])\n    return res\n"
+    },
+    {
+      "task_id": "HE-006",
+      "entry_point": "is_palindrome",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def is_palindrome(string: str) -> bool:\n    return string == string[::-1]\n"
+    },
+    {
+      "task_id": "HE-007",
+      "entry_point": "greatest_common_divisor",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def greatest_common_divisor(a: int, b: int) -> int:\n    import math\n    return math.gcd(a, b)\n"
+    },
+    {
+      "task_id": "HE-008",
+      "entry_point": "all_prefixes",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 61,
+      "final_code": "def all_prefixes(string: str) -> list:\n    return [string[:i+1] for i in range(len(string))]\n"
+    },
+    {
+      "task_id": "HE-009",
+      "entry_point": "sum_product",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def sum_product(numbers: list) -> tuple:\n    s = 0\n    p = 1\n    for n in numbers:\n        s += n\n        p *= n\n    return (s, p)\n"
+    },
+    {
+      "task_id": "HE-010",
+      "entry_point": "rolling_max",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def rolling_max(numbers: list) -> list:\n    if not numbers:\n        return []\n    res = []\n    cur = numbers[0]\n    for n in numbers:\n        if n > cur:\n            cur = n\n        res.append(cur)\n    return res\n"
+    },
+    {
+      "task_id": "HE-011",
+      "entry_point": "string_sequence",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def string_sequence(n: int) -> str:\n    return \" \".join(str(i) for i in range(n + 1))\n"
+    },
+    {
+      "task_id": "HE-012",
+      "entry_point": "count_distinct_characters",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 45,
+      "final_code": "def count_distinct_characters(string: str) -> int:\n    return len(set(string.lower()))\n"
+    },
+    {
+      "task_id": "HE-013",
+      "entry_point": "filter_by_substring",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def filter_by_substring(strings: list, substring: str) -> list:\n    return [s for s in strings if substring in s]\n"
+    },
+    {
+      "task_id": "HE-014",
+      "entry_point": "parse_nested_parens",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 47,
+      "final_code": "def parse_nested_parens(paren_string: str) -> list:\n    def max_depth(s):\n        d = 0\n        m = 0\n        for c in s:\n            if c == '(':\n                d += 1\n                if d > m: m = d\n            elif c == ')':\n                d -= 1\n        return m\n    return [max_depth(grp) for grp in paren_string.split() if grp]\n"
+    },
+    {
+      "task_id": "HE-015",
+      "entry_point": "how_many_times",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 47,
+      "final_code": "def how_many_times(string: str, substring: str) -> int:\n    if not string or not substring:\n        return 0\n    count = 0\n    for i in range(len(string) - len(substring) + 1):\n        if string[i:i+len(substring)] == substring:\n            count += 1\n    return count\n"
+    },
+    {
+      "task_id": "HE-016",
+      "entry_point": "sort_numbers",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def sort_numbers(numbers: str) -> str:\n    if not numbers.strip():\n        return \"\"\n    words = {'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4,\n             'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9}\n    inv = {v: k for k, v in words.items()}\n    items = numbers.split()\n    sorted_items = sorted(items, key=lambda w: words[w])\n    return \" \".join(sorted_items)\n"
+    },
+    {
+      "task_id": "HE-017",
+      "entry_point": "find_closest_elements",
+      "difficulty": "hard",
+      "passed": false,
+      "passed_at_attempt": null,
+      "attempts_used": 3,
+      "latency_ms": 77,
+      "final_code": "def find_closest_elements(numbers: list) -> tuple:\n    numbers = sorted(numbers)\n    min_diff = float('inf')\n    best = None\n    for i in range(len(numbers) - 1):\n        diff = abs(numbers[i] - numbers[i+1])\n        if diff < min_diff:\n            min_diff = diff\n            best = (numbers[i], numbers[i+1])\n    return best\n"
+    },
+    {
+      "task_id": "HE-018",
+      "entry_point": "rescale_to_unit",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def rescale_to_unit(numbers: list) -> list:\n    mn = min(numbers)\n    mx = max(numbers)\n    if mx == mn:\n        return [0.0 for _ in numbers]\n    return [(x - mn) / (mx - mn) for x in numbers]\n"
+    },
+    {
+      "task_id": "HE-019",
+      "entry_point": "parse_music",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 77,
+      "final_code": "def parse_music(music_string: str) -> list:\n    notes = {'o': 4, 'o|': 2, '.|': 1}\n    return [notes[n] for n in music_string.split() if n in notes]\n"
+    },
+    {
+      "task_id": "HE-020",
+      "entry_point": "encode_cyclic",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 2,
+      "attempts_used": 2,
+      "latency_ms": 62,
+      "final_code": "def encode_cyclic(s: str) -> str:\n    parts = [s[(3 * i):min((3 * i + 3), len(s))] for i in range((len(s) + 2) // 3)]\n    parts = [group[1:] + group[0] if len(group) == 3 else group for group in parts]\n    return \"\".join(parts)\n"
+    },
+    {
+      "task_id": "HE-021",
+      "entry_point": "filter_by_prefix",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def filter_by_prefix(strings: list, prefix: str) -> list:\n    return [s for s in strings if s.startswith(prefix)]\n"
+    },
+    {
+      "task_id": "HE-022",
+      "entry_point": "filter_integers",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 77,
+      "final_code": "def filter_integers(values: list) -> list:\n    return [x for x in values if isinstance(x, int) and not isinstance(x, bool)]\n"
+    },
+    {
+      "task_id": "HE-023",
+      "entry_point": "strlen",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 61,
+      "final_code": "def strlen(string: str) -> int:\n    return len(string)\n"
+    },
+    {
+      "task_id": "HE-024",
+      "entry_point": "largest_divisor",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def largest_divisor(n: int) -> int:\n    for i in range(n // 2, 0, -1):\n        if n % i == 0:\n            return i\n    return 1\n"
+    },
+    {
+      "task_id": "HE-025",
+      "entry_point": "factorize",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 78,
+      "final_code": "def factorize(n: int) -> list:\n    factors = []\n    d = 2\n    while d * d <= n:\n        while n % d == 0:\n            factors.append(d)\n            n //= d\n        d += 1\n    if n > 1:\n        factors.append(n)\n    return factors\n"
+    },
+    {
+      "task_id": "HE-026",
+      "entry_point": "remove_duplicates",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def remove_duplicates(numbers: list) -> list:\n    from collections import Counter\n    c = Counter(numbers)\n    return [x for x in numbers if c[x] == 1]\n"
+    },
+    {
+      "task_id": "HE-027",
+      "entry_point": "flip_case",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 77,
+      "final_code": "def flip_case(string: str) -> str:\n    return string.swapcase()\n"
+    },
+    {
+      "task_id": "HE-028",
+      "entry_point": "concatenate",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def concatenate(strings: list) -> str:\n    return \"\".join(strings)\n"
+    },
+    {
+      "task_id": "HE-029",
+      "entry_point": "filter_by_length",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def filter_by_length(strings: list, length: int) -> list:\n    return [s for s in strings if len(s) == length]\n"
+    },
+    {
+      "task_id": "HE-030",
+      "entry_point": "get_positive",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 45,
+      "final_code": "def get_positive(l: list) -> list:\n    return [x for x in l if x > 0]\n"
+    },
+    {
+      "task_id": "HE-031",
+      "entry_point": "is_prime",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def is_prime(n: int) -> bool:\n    if n < 2:\n        return False\n    for i in range(2, int(n ** 0.5) + 1):\n        if n % i == 0:\n            return False\n    return True\n"
+    },
+    {
+      "task_id": "HE-032",
+      "entry_point": "poly",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 2,
+      "attempts_used": 2,
+      "latency_ms": 62,
+      "final_code": "def poly(xs: list, x: float) -> float:\n    return sum([coeff * (x ** i) for i, coeff in enumerate(xs)])\n"
+    },
+    {
+      "task_id": "HE-033",
+      "entry_point": "sort_third",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 61,
+      "final_code": "def sort_third(l: list) -> list:\n    l = list(l)\n    thirds = sorted([l[i] for i in range(0, len(l), 3)])\n    for idx, i in enumerate(range(0, len(l), 3)):\n        l[i] = thirds[idx]\n    return l\n"
+    },
+    {
+      "task_id": "HE-034",
+      "entry_point": "unique",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def unique(l: list) -> list:\n    return sorted(list(set(l)))\n"
+    },
+    {
+      "task_id": "HE-035",
+      "entry_point": "max_element",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def max_element(l: list) -> int:\n    return max(l)\n"
+    },
+    {
+      "task_id": "HE-036",
+      "entry_point": "fizz_buzz",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def fizz_buzz(n: int) -> int:\n    count = 0\n    for i in range(n):\n        if (i % 11 == 0 or i % 13 == 0) and '7' in str(i):\n            count += str(i).count('7')\n    return count\n"
+    },
+    {
+      "task_id": "HE-037",
+      "entry_point": "sort_even",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def sort_even(l: list) -> list:\n    l = list(l)\n    evens = sorted([l[i] for i in range(0, len(l), 2)])\n    for idx, i in enumerate(range(0, len(l), 2)):\n        l[i] = evens[idx]\n    return l\n"
+    },
+    {
+      "task_id": "HE-038",
+      "entry_point": "decode_cyclic",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 3,
+      "attempts_used": 3,
+      "latency_ms": 47,
+      "final_code": "def decode_cyclic(s: str) -> str:\n    def encode_cyclic(x: str) -> str:\n        parts = [x[(3 * i):min((3 * i + 3), len(x))] for i in range((len(x) + 2) // 3)]\n        parts = [group[1:] + group[0] if len(group) == 3 else group for group in parts]\n        return \"\".join(parts)\n    return encode_cyclic(encode_cyclic(s))\n"
+    },
+    {
+      "task_id": "HE-039",
+      "entry_point": "prime_fib",
+      "difficulty": "hard",
+      "passed": true,
+      "passed_at_attempt": 2,
+      "attempts_used": 2,
+      "latency_ms": 61,
+      "final_code": "def prime_fib(n: int) -> int:\n    def is_prime(x):\n        if x < 2: return False\n        for i in range(2, int(x**0.5) + 1):\n            if x % i == 0: return False\n        return True\n    a, b = 1, 2\n    count = 0\n    while True:\n        if is_prime(b):\n            count += 1\n            if count == n:\n                return b\n        a, b = b, a + b\n"
+    },
+    {
+      "task_id": "HE-040",
+      "entry_point": "triples_sum_to_zero",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def triples_sum_to_zero(l: list) -> bool:\n    for i in range(len(l)):\n        for j in range(i + 1, len(l)):\n            for k in range(j + 1, len(l)):\n                if l[i] + l[j] + l[k] == 0:\n                    return True\n    return False\n"
+    },
+    {
+      "task_id": "HE-041",
+      "entry_point": "car_race_collision",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 63,
+      "final_code": "def car_race_collision(n: int) -> int:\n    return n ** 2\n"
+    },
+    {
+      "task_id": "HE-042",
+      "entry_point": "incr_list",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def incr_list(l: list) -> list:\n    return [x + 1 for x in l]\n"
+    },
+    {
+      "task_id": "HE-043",
+      "entry_point": "pairs_sum_to_zero",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def pairs_sum_to_zero(l: list) -> bool:\n    for i in range(len(l)):\n        for j in range(i + 1, len(l)):\n            if l[i] + l[j] == 0:\n                return True\n    return False\n"
+    },
+    {
+      "task_id": "HE-044",
+      "entry_point": "change_base",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 47,
+      "final_code": "def change_base(x: int, base: int) -> str:\n    if x == 0:\n        return \"0\"\n    res = \"\"\n    while x > 0:\n        res = str(x % base) + res\n        x //= base\n    return res\n"
+    },
+    {
+      "task_id": "HE-045",
+      "entry_point": "triangle_area",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def triangle_area(a: float, h: float) -> float:\n    return 0.5 * a * h\n"
+    },
+    {
+      "task_id": "HE-046",
+      "entry_point": "fib4",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def fib4(n: int) -> int:\n    results = [0, 0, 2, 0]\n    if n < 4:\n        return results[n]\n    for _ in range(4, n + 1):\n        results.append(results[-1] + results[-2] + results[-3] + results[-4])\n        results.pop(0)\n    return results[-1]\n"
+    },
+    {
+      "task_id": "HE-047",
+      "entry_point": "median",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 47,
+      "final_code": "def median(l: list) -> float:\n    s = sorted(l)\n    n = len(s)\n    if n % 2 == 1:\n        return float(s[n // 2])\n    return (s[n // 2 - 1] + s[n // 2]) / 2.0\n"
+    },
+    {
+      "task_id": "HE-048",
+      "entry_point": "is_palindrome",
+      "difficulty": "easy",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 62,
+      "final_code": "def is_palindrome(text: str) -> bool:\n    return text == text[::-1]\n"
+    },
+    {
+      "task_id": "HE-049",
+      "entry_point": "modp",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 61,
+      "final_code": "def modp(n: int, p: int) -> int:\n    res = 1\n    for _ in range(n):\n        res = (res * 2) % p\n    return res\n"
+    },
+    {
+      "task_id": "HE-050",
+      "entry_point": "encode_shift",
+      "difficulty": "medium",
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 94,
+      "final_code": "def encode_shift(s: str) -> str:\n    return \"\".join([chr(((ord(ch) + 5 - ord(\"a\")) % 26) + ord(\"a\")) for ch in s])\n"
+    }
+  ]
+}
