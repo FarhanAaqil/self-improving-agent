@@ -22,16 +22,19 @@ def _get_client() -> Groq:
 
 CRITIQUE_SYSTEM_PROMPT = """You are a senior Python code reviewer.
 
-Your job is to review working Python code and decide if it needs improvement.
+Your job is to review working Python code, assign a confidence score, and decide if it needs improvement.
 
-You must respond in this EXACT format and nothing else:
+You must respond in this EXACT format:
 
 VERDICT: APPROVED
-(if the code is good as-is)
+CONFIDENCE: [float between 0.0 and 1.0, e.g. 0.95]
+REASONING: [Brief explanation of why the code is approved]
 
 OR:
 
 VERDICT: REWRITE
+CONFIDENCE: [float between 0.0 and 1.0 estimating likelihood a retry will succeed, e.g. 0.65]
+REASONING: [Brief explanation of the core deficiency]
 ISSUES:
 - [specific issue 1]
 - [specific issue 2]
@@ -45,22 +48,14 @@ Review criteria — flag only real problems, not style preferences:
 4. Readability — deeply nested logic that can be flattened cleanly
 5. Incorrect output — does it actually print/return what the task asked for?
 
-Do NOT flag:
-- Minor style differences
-- Subjective naming preferences
-- Adding features not in the task
-- Things that are nice to have but not required
-
-Be strict but fair. Most correct, clean code should be APPROVED."""
+If an intractable architectural error or impossible specification is present, assign confidence < 0.3.
+Most correct, clean code should have confidence >= 0.8 and VERDICT: APPROVED."""
 
 
 def critique_code(task: str, code: str, output: str, client_override=None, model_override=None) -> dict:
     """
     Critique a working piece of code.
-    Returns: { verdict, issues, instructions, raw }
-
-    Day 7 TODO: add confidence score (0.0–1.0) to the return dict
-    for adaptive early-stop in the repair loop.
+    Returns: { verdict, confidence, reasoning, issues, instructions, raw }
     """
     _client = client_override or _get_client()
     _model = model_override or MODEL
@@ -74,7 +69,7 @@ Working code to review:
 Actual output produced:
 {output or "(no output — code ran silently)"}
 
-Review this code and give your verdict."""
+Review this code and give your verdict with confidence score."""
 
     response = _client.chat.completions.create(
         model=_model,
@@ -126,22 +121,36 @@ def critique_rewrite(task: str, code: str, instructions: str, client_override=No
 
 
 def _parse_verdict(raw: str) -> dict:
-    """Parse the structured verdict from the critique LLM."""
+    """Parse the structured verdict, confidence score, and instructions from the critique LLM."""
     result = {
         "verdict": "APPROVED",
+        "confidence": 0.85,
+        "reasoning": "",
         "issues": [],
         "instructions": "",
         "raw": raw,
-        "confidence": None,  # populated in Day 7
     }
 
     lines = raw.splitlines()
 
     for line in lines:
-        if line.strip().startswith("VERDICT:"):
-            verdict_text = line.split("VERDICT:")[-1].strip().upper()
+        stripped = line.strip()
+        if stripped.startswith("VERDICT:"):
+            verdict_text = stripped.split("VERDICT:")[-1].strip().upper()
             result["verdict"] = "REWRITE" if "REWRITE" in verdict_text else "APPROVED"
-            break
+        elif stripped.startswith("CONFIDENCE:"):
+            val_str = stripped.split("CONFIDENCE:")[-1].strip()
+            try:
+                # Parse numeric float (e.g. 0.85, 85%)
+                clean_val = val_str.replace("%", "").strip()
+                parsed = float(clean_val)
+                if parsed > 1.0:
+                    parsed = parsed / 100.0
+                result["confidence"] = max(0.0, min(1.0, round(parsed, 2)))
+            except ValueError:
+                result["confidence"] = 0.5 if result["verdict"] == "REWRITE" else 0.85
+        elif stripped.startswith("REASONING:"):
+            result["reasoning"] = stripped.split("REASONING:")[-1].strip()
 
     if result["verdict"] == "REWRITE":
         in_issues = False

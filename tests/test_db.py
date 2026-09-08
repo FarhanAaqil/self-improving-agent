@@ -75,6 +75,37 @@ def test_runs_and_attempts_lifecycle(temp_db):
     assert full_run["attempts"][1]["stdout"] == "3"
 
 
+def test_critique_columns_and_review_update(temp_db):
+    run_id = "test-critique-run"
+    insert_run(run_id, "Write a binary search", db_path=temp_db)
+
+    att_id = insert_attempt(
+        run_id=run_id,
+        attempt_number=1,
+        generated_code="def search(): pass",
+        critique_confidence=0.25,
+        critique_reasoning="Intractable recursive depth logic",
+        success=False,
+        db_path=temp_db,
+    )
+
+    from app.db import update_attempt_review
+
+    update_attempt_review(
+        attempt_id=att_id,
+        critique_confidence=0.88,
+        critique_reasoning="Revised logic is solid",
+        generated_tests="def test_search(): assert search() is None",
+        db_path=temp_db,
+    )
+
+    run = get_run_with_attempts(run_id, db_path=temp_db)
+    attempt = run["attempts"][0]
+    assert attempt["critique_confidence"] == 0.88
+    assert attempt["critique_reasoning"] == "Revised logic is solid"
+    assert "test_search" in attempt["generated_tests"]
+
+
 def test_list_runs(temp_db):
     for i in range(3):
         insert_run(f"run-{i}", f"Task {i}", db_path=temp_db)

@@ -64,6 +64,7 @@ class AttemptOut(BaseModel):
     tokens_used: int | None = None
     model_name: str | None = None
     critique_confidence: float | None = None
+    critique_reasoning: str | None = None
     generated_tests: str | None = None
     performance_notes: str | None = None
     security_audit: str | None = None

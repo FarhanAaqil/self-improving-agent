@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.code_security_audit import CodeSecurityAudit
 from app.config import (
     MODEL,
     RESULTS_DIR,
@@ -24,9 +25,13 @@ from app.db import (
     insert_eval_run,
     insert_run,
     list_runs,
+    update_attempt_review,
     update_run_status,
 )
+from app.documentation_agent import document_code
 from app.generator import generate_code
+from app.metrics import calculate_quality_metrics
+from app.performance_agent import analyze_performance
 from app.sandbox import _is_docker_available, run_code
 from app.schemas import (
     EvalResultOut,
@@ -39,6 +44,7 @@ from app.schemas import (
     GenerateRequest,
     RunOut,
 )
+from app.test_agent import generate_unit_tests
 
 # Ensure SQLite tables exist immediately upon import
 init_db()
@@ -165,6 +171,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     working_code = None
     working_output = None
     attempts_done = 0
+    passing_attempt_id: int | None = None
 
     for attempt in range(1, req.max_attempts + 1):
         attempts_done = attempt
@@ -190,36 +197,134 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
 
         exec_res = run_code(code, timeout=SANDBOX_TIMEOUT)
 
-        insert_attempt(
-            run_id=run_id,
-            attempt_number=attempt,
-            generated_code=code,
-            stdout=exec_res.get("output"),
-            stderr=exec_res.get("error"),
-            exit_code=exec_res.get("exit_code"),
-            success=exec_res["success"],
-            latency_ms=exec_res.get("latency_ms"),
-            model_name=model_name,
-        )
+        critique_conf = None
+        should_early_stop = False
 
         if exec_res["success"]:
             working_code = code
             working_output = exec_res.get("output") or ""
+            passing_attempt_id = insert_attempt(
+                run_id=run_id,
+                attempt_number=attempt,
+                generated_code=code,
+                stdout=exec_res.get("output"),
+                stderr=exec_res.get("error"),
+                exit_code=exec_res.get("exit_code"),
+                success=True,
+                latency_ms=exec_res.get("latency_ms"),
+                model_name=model_name,
+            )
             break
         else:
             last_error = exec_res.get("error")
+            if "critique" not in req.skip_agents:
+                try:
+                    c_res = critique_code(
+                        task=req.task_description,
+                        code=code,
+                        output=exec_res.get("error") or exec_res.get("output") or "",
+                        model_override=model_name,
+                    )
+                    critique_conf = c_res.get("confidence")
+                    critique_re = c_res.get("reasoning")
+                    if critique_conf is not None and critique_conf < 0.3:
+                        should_early_stop = True
+                except Exception:
+                    critique_conf = None
+                    critique_re = None
 
-    # Optional Critique review if working code was found
-    if working_code and "critique" not in req.skip_agents:
+            insert_attempt(
+                run_id=run_id,
+                attempt_number=attempt,
+                generated_code=code,
+                stdout=exec_res.get("output"),
+                stderr=exec_res.get("error"),
+                exit_code=exec_res.get("exit_code"),
+                success=False,
+                latency_ms=exec_res.get("latency_ms"),
+                model_name=model_name,
+                critique_confidence=critique_conf,
+                critique_reasoning=critique_re,
+            )
+
+            if should_early_stop:
+                break
+
+    # Post-success review pipeline
+    if working_code and passing_attempt_id is not None:
+        generated_tests = None
+        performance_notes = None
+        security_audit = None
+        critique_conf = None
+        critique_re = None
+
+        if "test" not in req.skip_agents and "tests" not in req.skip_agents:
+            try:
+                generated_tests = generate_unit_tests(req.task_description, working_code, model_override=model_name)
+            except Exception:
+                generated_tests = None
+
+        if "performance" not in req.skip_agents:
+            try:
+                performance_notes = analyze_performance(req.task_description, working_code, model_override=model_name)
+            except Exception:
+                performance_notes = None
+
+        if "security_audit" not in req.skip_agents and "security" not in req.skip_agents:
+            try:
+                security_audit = CodeSecurityAudit.audit(req.task_description, working_code, model_override=model_name)
+            except Exception:
+                security_audit = None
+
+        if "docs" not in req.skip_agents and "documentation" not in req.skip_agents:
+            try:
+                documented_code = document_code(req.task_description, working_code, model_override=model_name)
+                if documented_code:
+                    working_code = documented_code
+            except Exception:
+                pass
+
+        if "critique" not in req.skip_agents:
+            try:
+                c_res = critique_code(req.task_description, working_code, working_output, model_override=model_name)
+                critique_conf = c_res.get("confidence")
+                critique_re = c_res.get("reasoning")
+            except Exception:
+                critique_conf = None
+                critique_re = None
+
+        quality_overall_score = None
+        quality_report_json = None
         try:
-            critique_code(req.task_description, working_code, working_output, model_override=model_name)
-            # Store critique feedback on latest attempt
-            pass
+            metrics_report = calculate_quality_metrics(
+                code=working_code,
+                generated_tests=generated_tests,
+                performance_notes=performance_notes,
+                security_audit=security_audit,
+            )
+            quality_overall_score = metrics_report.get("overall_score")
+            quality_report_json = json.dumps(metrics_report)
         except Exception:
-            # Critique is best-effort optimization; failure should never abort a passing run
             pass
 
-    final_status = "success" if working_code else "max_retries_exceeded"
+        update_attempt_review(
+            attempt_id=passing_attempt_id,
+            critique_confidence=critique_conf,
+            critique_reasoning=critique_re,
+            generated_tests=generated_tests,
+            performance_notes=performance_notes,
+            security_audit=security_audit,
+            quality_overall_score=quality_overall_score,
+            quality_report_json=quality_report_json,
+            generated_code=working_code,
+        )
+
+    if working_code:
+        final_status = "success"
+    elif should_early_stop:
+        final_status = "early_stopped"
+    else:
+        final_status = "max_retries_exceeded"
     update_run_status(run_id, final_status=final_status, total_attempts=attempts_done)
 
     full_run = get_run_with_attempts(run_id)
