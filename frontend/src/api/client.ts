@@ -1,7 +1,6 @@
 // Typed fetch wrappers for FastAPI backend endpoints
 
 import type {
-  AttemptOut,
   EvalResultOut,
   EvalRunOut,
   EvalRunRequest,

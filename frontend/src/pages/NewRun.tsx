@@ -2,19 +2,45 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   AlertCircle,
-  ArrowRight,
   ExternalLink,
   Layers,
+  Lightbulb,
   Loader2,
   Play,
   Sliders,
-  Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { generateAndRepair, getRun } from '../api/client'
 import type { RunOut } from '../api/types'
 import AttemptCard from '../components/AttemptCard'
 import StatusBadge from '../components/StatusBadge'
+
+const TEMPLATE_PROMPTS = [
+  {
+    title: 'LRU Cache',
+    category: 'Algorithms',
+    prompt:
+      'Write a complete LRUCache class in Python with get(key) and put(key, value) in O(1) time complexity using a doubly linked list and hashmap. Include self-tests asserting eviction order and capacity limits.',
+  },
+  {
+    title: 'Parse Access Logs',
+    category: 'Regex & Parsing',
+    prompt:
+      'Write a function parse_access_logs(logs) that parses web server log lines with regex, extracts client IP addresses, HTTP methods, and status codes, and returns a dictionary counting status codes per unique IP. Test with sample log strings.',
+  },
+  {
+    title: 'Validate Binary Search Tree',
+    category: 'Data Structures',
+    prompt:
+      'Write a function is_valid_bst(root) that checks whether a binary tree is a valid Binary Search Tree with strictly increasing in-order traversal values. Include test cases with valid and invalid trees.',
+  },
+  {
+    title: 'Safe Path Traversal Guard',
+    category: 'Security',
+    prompt:
+      "Write a function safe_join(base_dir, user_path) that safely resolves an untrusted user path within base_dir and raises ValueError on directory traversal attempts (like '../'). Include test cases verifying traversal attacks are blocked.",
+  },
+]
 
 export default function NewRun() {
   const [taskDescription, setTaskDescription] = useState('')
@@ -26,7 +52,7 @@ export default function NewRun() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
 
   // Polling query: polls GET /runs/{run_id} while the agent is running
-  const { data: polledRun, isFetching } = useQuery<RunOut>({
+  const { data: polledRun } = useQuery<RunOut>({
     queryKey: ['run', activeRunId],
     queryFn: () => getRun(activeRunId!),
     enabled: Boolean(activeRunId),
@@ -49,6 +75,11 @@ export default function NewRun() {
     setSkipAgents((prev) =>
       prev.includes(agent) ? prev.filter((a) => a !== agent) : [...prev, agent]
     )
+  }
+
+  const handleSelectTemplate = (prompt: string) => {
+    setTaskDescription(prompt)
+    setValidationError(null)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -82,6 +113,36 @@ export default function NewRun() {
         <p className="text-sm text-slate-400 mt-1">
           Submit a programming task to the agent. Code is generated, executed in the isolated Docker sandbox, and autonomously repaired on error.
         </p>
+      </div>
+
+      {/* Template Prompts */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+          <Lightbulb className="h-3.5 w-3.5 text-amber-400" />
+          <span>Quick Template Prompts</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {TEMPLATE_PROMPTS.map((item) => (
+            <button
+              key={item.title}
+              type="button"
+              onClick={() => handleSelectTemplate(item.prompt)}
+              className="text-left p-3 rounded-lg bg-slate-900/50 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all group flex flex-col justify-between cursor-pointer"
+            >
+              <div>
+                <span className="text-[10px] uppercase font-mono text-indigo-400 font-semibold block mb-0.5">
+                  {item.category}
+                </span>
+                <span className="text-xs font-medium text-slate-200 group-hover:text-white transition-colors block">
+                  {item.title}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 line-clamp-2 mt-1.5 font-mono">
+                {item.prompt}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Input Form */}
