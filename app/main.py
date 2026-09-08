@@ -172,6 +172,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     working_output = None
     attempts_done = 0
     passing_attempt_id: int | None = None
+    last_failed_code: str | None = None
 
     for attempt in range(1, req.max_attempts + 1):
         attempts_done = attempt
@@ -198,6 +199,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
         exec_res = run_code(code, timeout=SANDBOX_TIMEOUT)
 
         critique_conf = None
+        critique_re = None
         should_early_stop = False
 
         if exec_res["success"]:
@@ -217,6 +219,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
             break
         else:
             last_error = exec_res.get("error")
+            last_failed_code = code
             if "critique" not in req.skip_agents:
                 try:
                     c_res = critique_code(
@@ -326,6 +329,18 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     else:
         final_status = "max_retries_exceeded"
     update_run_status(run_id, final_status=final_status, total_attempts=attempts_done)
+
+    # On terminal failure, record failure in ChromaDB vector memory for future retrieval
+    if not working_code and last_error and last_failed_code:
+        try:
+            from app.memory import store_failure
+            store_failure(
+                task=req.task_description,
+                code=last_failed_code,
+                error=last_error,
+            )
+        except Exception:
+            pass
 
     full_run = get_run_with_attempts(run_id)
     if not full_run:

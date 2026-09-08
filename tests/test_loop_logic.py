@@ -253,3 +253,39 @@ def test_post_success_pipeline_populates_review_and_metrics():
         assert attempt["quality_overall_score"] > 0.8
         assert "cyclomatic_complexity" in attempt["quality_report_json"]
 
+
+def test_terminal_failure_writes_to_chromadb_memory():
+    """Verify that on terminal failure, store_failure is called with task, code, and error."""
+    gen_mock = MagicMock(return_value="def broken(): raise ValueError('Fatal error')")
+    run_mock = MagicMock(
+        return_value={
+            "success": False,
+            "error": "ValueError: Fatal error",
+            "output": "",
+            "exit_code": 1,
+            "latency_ms": 15,
+        }
+    )
+
+    with patch("app.main.generate_code", gen_mock), \
+         patch("app.main.run_code", run_mock), \
+         patch("app.memory.store_failure") as store_mock:
+
+        resp = client.post(
+            "/generate-and-repair",
+            json={
+                "task_description": "Fatal failing task",
+                "max_attempts": 2,
+                "skip_agents": ["critique"],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["final_status"] == "max_retries_exceeded"
+        # store_failure must have been called with task, code, and error
+        store_mock.assert_called_once()
+        kwargs = store_mock.call_args[1]
+        assert kwargs["task"] == "Fatal failing task"
+        assert "def broken()" in kwargs["code"]
+        assert "ValueError: Fatal error" in kwargs["error"]
+
