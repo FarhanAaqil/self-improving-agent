@@ -1,4 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import EvalDashboard from './pages/EvalDashboard'
+import NewRun from './pages/NewRun'
+import RunDetail from './pages/RunDetail'
+import RunHistory from './pages/RunHistory'
+import SecurityAbout from './pages/SecurityAbout'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -12,14 +18,15 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-        <header className="border-b border-slate-800 bg-slate-900/50 px-6 py-4">
-          <h1 className="text-xl font-semibold tracking-tight">Self-Improving Code Agent</h1>
-        </header>
-        <main className="flex-1 p-6">
-          <p className="text-slate-400">Agent interface initialized with TanStack Query.</p>
-        </main>
-      </div>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<NewRun />} />
+          <Route path="/history" element={<RunHistory />} />
+          <Route path="/runs/:runId" element={<RunDetail />} />
+          <Route path="/eval" element={<EvalDashboard />} />
+          <Route path="/security" element={<SecurityAbout />} />
+        </Routes>
+      </BrowserRouter>
     </QueryClientProvider>
   )
 }
