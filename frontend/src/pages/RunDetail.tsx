@@ -1,13 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
+  CheckCircle2,
   Clock,
   Code2,
   ExternalLink,
   Layers,
   Loader2,
   RefreshCw,
+  Scale,
   Terminal,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -67,6 +70,15 @@ export default function RunDetail() {
 
   const totalLatency = run.attempts.reduce((sum, a) => sum + (a.latency_ms || 0), 0)
   const passingAttempt = run.attempts.find((a) => a.success)
+  const latestAttempt = run.attempts[run.attempts.length - 1]
+
+  // Check if early-stop was triggered by Critique agent (confidence < 0.3)
+  const isEarlyStopped =
+    latestAttempt &&
+    latestAttempt.critique_confidence !== null &&
+    latestAttempt.critique_confidence !== undefined &&
+    latestAttempt.critique_confidence < 0.3 &&
+    !latestAttempt.success
 
   return (
     <div className="space-y-6">
@@ -132,10 +144,37 @@ export default function RunDetail() {
         </div>
       </div>
 
+      {/* Critique Reasoning & Early-Stop Display */}
+      {latestAttempt?.critique_confidence !== null &&
+        latestAttempt?.critique_confidence !== undefined && (
+          <div
+            className={`p-4 rounded-xl border flex items-start gap-3.5 text-xs ${
+              isEarlyStopped
+                ? 'bg-amber-950/20 border-amber-500/30 text-amber-200'
+                : 'bg-indigo-950/20 border-indigo-500/30 text-indigo-200'
+            }`}
+          >
+            <Scale className="h-5 w-5 shrink-0 text-indigo-400 mt-0.5" />
+            <div className="space-y-1 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-100">
+                  Critique Evaluation Analysis
+                </span>
+                <span className="font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-indigo-300">
+                  Confidence: {(latestAttempt.critique_confidence * 100).toFixed(0)}%
+                </span>
+              </div>
+              <p className="text-slate-400 leading-relaxed font-sans">
+                {isEarlyStopped
+                  ? 'Early-stop triggered: The Critique agent assessed confidence below 0.3 threshold, terminating the repair loop early to avoid wasteful token consumption on intractable errors.'
+                  : `Critique score ${(latestAttempt.critique_confidence * 100).toFixed(0)}% exceeds the 0.3 threshold. Code verified against quality and execution constraints.`}
+              </p>
+            </div>
+          </div>
+        )}
+
       {/* Code diff view between attempts if 2 or more attempts exist */}
-      {run.attempts.length >= 2 && (
-        <CodeDiffView attempts={run.attempts} />
-      )}
+      {run.attempts.length >= 2 && <CodeDiffView attempts={run.attempts} />}
 
       {/* Attempts Timeline */}
       <div className="space-y-4">
