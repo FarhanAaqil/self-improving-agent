@@ -190,36 +190,69 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
 
         exec_res = run_code(code, timeout=SANDBOX_TIMEOUT)
 
-        insert_attempt(
-            run_id=run_id,
-            attempt_number=attempt,
-            generated_code=code,
-            stdout=exec_res.get("output"),
-            stderr=exec_res.get("error"),
-            exit_code=exec_res.get("exit_code"),
-            success=exec_res["success"],
-            latency_ms=exec_res.get("latency_ms"),
-            model_name=model_name,
-        )
+        critique_conf = None
+        should_early_stop = False
 
         if exec_res["success"]:
             working_code = code
             working_output = exec_res.get("output") or ""
+            insert_attempt(
+                run_id=run_id,
+                attempt_number=attempt,
+                generated_code=code,
+                stdout=exec_res.get("output"),
+                stderr=exec_res.get("error"),
+                exit_code=exec_res.get("exit_code"),
+                success=True,
+                latency_ms=exec_res.get("latency_ms"),
+                model_name=model_name,
+            )
             break
         else:
             last_error = exec_res.get("error")
+            if "critique" not in req.skip_agents:
+                try:
+                    c_res = critique_code(
+                        task=req.task_description,
+                        code=code,
+                        output=exec_res.get("error") or exec_res.get("output") or "",
+                        model_override=model_name,
+                    )
+                    critique_conf = c_res.get("confidence")
+                    if critique_conf is not None and critique_conf < 0.3:
+                        should_early_stop = True
+                except Exception:
+                    critique_conf = None
+
+            insert_attempt(
+                run_id=run_id,
+                attempt_number=attempt,
+                generated_code=code,
+                stdout=exec_res.get("output"),
+                stderr=exec_res.get("error"),
+                exit_code=exec_res.get("exit_code"),
+                success=False,
+                latency_ms=exec_res.get("latency_ms"),
+                model_name=model_name,
+                critique_confidence=critique_conf,
+            )
+
+            if should_early_stop:
+                break
 
     # Optional Critique review if working code was found
     if working_code and "critique" not in req.skip_agents:
         try:
             critique_code(req.task_description, working_code, working_output, model_override=model_name)
-            # Store critique feedback on latest attempt
-            pass
         except Exception:
-            # Critique is best-effort optimization; failure should never abort a passing run
             pass
 
-    final_status = "success" if working_code else "max_retries_exceeded"
+    if working_code:
+        final_status = "success"
+    elif should_early_stop:
+        final_status = "early_stopped"
+    else:
+        final_status = "max_retries_exceeded"
     update_run_status(run_id, final_status=final_status, total_attempts=attempts_done)
 
     full_run = get_run_with_attempts(run_id)
