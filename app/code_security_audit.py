@@ -73,3 +73,16 @@ def _clean_security_output(raw: str) -> str:
     if text.upper().startswith("SECURE"):
         return "SECURE"
     return text
+
+
+class CodeSecurityAudit:
+    """
+    CodeSecurityAudit agent performs static LLM analysis of code safety.
+    Note: This is distinct from sandbox isolation (Docker containers and seccomp).
+    This agent checks for architectural and library vulnerabilities inside code.
+    """
+
+    @staticmethod
+    def audit(task: str, code: str, client_override=None, model_override: str | None = None) -> str:
+        return audit_code_security(task, code, client_override=client_override, model_override=model_override)
+
