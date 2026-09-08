@@ -2,9 +2,12 @@
 
 > An AI agent that writes Python code, executes it in a sandbox, critiques its own output, learns from failures via vector memory, and benchmarks improvement — built on a fully zero-cost stack.
 
-![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white)
+[![CI](https://github.com/FarhanAaqil/self-improving-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/FarhanAaqil/self-improving-agent/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/Frontend-React%20%2B%20TS-61DAFB?style=flat&logo=react&logoColor=black)
+![Docker](https://img.shields.io/badge/Sandbox-Docker-2496ED?style=flat&logo=docker&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Llama%203.3%2070B-F55036?style=flat)
-![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?style=flat&logo=streamlit&logoColor=white)
 ![ChromaDB](https://img.shields.io/badge/Memory-ChromaDB-orange?style=flat)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat)
 

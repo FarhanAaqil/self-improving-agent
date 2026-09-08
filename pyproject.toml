@@ -58,7 +58,6 @@ ignore = ["E501", "E701", "E702"]  # line length and compact inline idioms
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 markers = [
     "integration: marks tests requiring real Groq API key and Docker (deselect with -m 'not integration')",
     "sandbox: marks adversarial sandbox isolation tests",

@@ -23,14 +23,9 @@ jobs:
       - name: Run ruff
         run: ruff check .
 
-  # ── Unit tests (no API key, no Docker required) ─────────────
-  # Added progressively across days:
-  #   Day 3: test_sandbox_isolation.py
-  #   Day 7: test_loop_logic.py
-  #   Day 8: test_eval_scoring.py, test_memory_injection.py
-  #   Day 9: full suite wired here
+  # ── Unit tests & Sandbox Isolation (no external API key required) ──
   unit-tests:
-    name: Unit tests
+    name: Unit & Sandbox tests
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -50,8 +45,6 @@ jobs:
         run: pytest -m "not integration" -v
 
   # ── Smoke eval (requires GROQ_API_KEY + Docker) ─────────────
-  # Added Day 9. Runs 8 HumanEval problems.
-  # Skipped gracefully in forks that don't have the secret (pull requests from forks do not receive secrets)
   smoke-eval:
     name: Smoke eval (8 HumanEval problems)
     runs-on: ubuntu-latest
@@ -67,25 +60,17 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
+      - name: Pull sandbox docker image
+        run: docker pull python:3.11-slim
+
       - name: Run smoke eval
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || vars.GROQ_API_KEY }}
-        run: |
-          if [ -z "$GROQ_API_KEY" ]; then
-            echo "GROQ_API_KEY is not set. Skipping smoke eval."
-            exit 0
-          fi
-          if [ -f scripts/smoke_eval.py ]; then
-            python scripts/smoke_eval.py --problems 8
-          else
-            echo "scripts/smoke_eval.py not yet implemented (scheduled for Day 9). Skipping."
-          fi
-        continue-on-error: false   # fail the build on regression
+        run: python scripts/smoke_eval.py --problems 8
 
   # ── Full integration + eval (merge to main only) ─────────────
-  # Added Day 9. Runs full HumanEval subset and commits results.
   integration:
-    name: Full integration (merge to main)
+    name: Full integration & Benchmark (merge to main)
     runs-on: ubuntu-latest
     needs: unit-tests
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -99,22 +84,36 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Full integration test (1 real HumanEval problem)
+      - name: Pull sandbox docker image
+        run: docker pull python:3.11-slim
+
+      - name: Run integration test (1 real problem)
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          if pytest -m integration --collect-only -q 2>&1 | grep -q "collected [1-9]"; then
+          if [ -n "$GROQ_API_KEY" ]; then
             pytest -m integration -v
           else
-            echo "No integration tests present yet. Skipping."
+            echo "GROQ_API_KEY not set. Skipping real integration test."
           fi
 
       - name: Full eval run (50 HumanEval problems)
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          if [ -f eval/humaneval_runner.py ]; then
+          if [ -n "$GROQ_API_KEY" ]; then
             python eval/humaneval_runner.py --problems 50
+            python scripts/generate_readme_table.py
           else
-            echo "eval/humaneval_runner.py not yet implemented (scheduled for Day 9). Skipping."
+            echo "GROQ_API_KEY not set. Skipping full benchmark eval."
           fi
+
+      - name: Commit updated benchmark results
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        if: env.GROQ_API_KEY != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/ README.md
+          git diff --quiet && git diff --staged --quiet || (git commit -m "update benchmark results [skip ci]" && git push)

@@ -209,7 +209,7 @@ def run_humaneval_evaluation(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HumanEval evaluation runner")
-    parser.add_argument("--subset", type=int, default=50, help="Subset size (default 50)")
+    parser.add_argument("--subset", "--problems", dest="subset", type=int, default=50, help="Subset size (default 50)")
     parser.add_argument("--model", type=str, default=MODEL)
     args = parser.parse_args()
 
