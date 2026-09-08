@@ -1,0 +1,8 @@
+task_id: custom_14_matrix_rotation
+name: Rotate 2D Matrix Clockwise
+prompt: 'Write a function `rotate_matrix_clockwise(matrix: list[list[int]]) -> list[list[int]]`
+
+  that rotates an N x M matrix 90 degrees clockwise and returns the rotated matrix.'
+test: "mat = [\n    [1, 2, 3],\n    [4, 5, 6]\n]\nexpected = [\n    [4, 1],\n    [5,\
+  \ 2],\n    [6, 3]\n]\nassert rotate_matrix_clockwise(mat) == expected\nassert rotate_matrix_clockwise([[1]])\
+  \ == [[1]]\n"

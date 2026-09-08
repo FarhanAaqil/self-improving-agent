@@ -47,15 +47,25 @@ def generate_code(
     memory_context: str = "",
     model: str = MODEL,
     api_key: str | None = None,
+    client: Groq | None = None,
+    use_memory: bool = True,
 ) -> str:
     """
     Call the LLM and return the generated Python code string.
-    Raises on LLM error — callers should catch.
+    Automatically queries ChromaDB vector memory on attempt 1 to retrieve
+    similar past failures and inject them as few-shot context above threshold.
     """
-    client = Groq(api_key=api_key or GROQ_API_KEY)
+    if not memory_context and attempt == 1 and use_memory:
+        try:
+            from app.memory import build_memory_context
+            memory_context = build_memory_context(task)
+        except Exception:
+            memory_context = ""
+
+    _client = client or Groq(api_key=api_key or GROQ_API_KEY)
     messages = build_messages(task, error, attempt, memory_context)
 
-    response = client.chat.completions.create(
+    response = _client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=0.1,

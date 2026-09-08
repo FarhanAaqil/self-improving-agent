@@ -27,8 +27,9 @@ LOG_DIR = os.path.join(_ROOT, "logs")  # legacy
 # ── Vector Memory (ChromaDB) ────────────────────────────────
 MEMORY_DIR = os.getenv("MEMORY_DIR", os.path.join(_ROOT, "memory_db"))
 MEMORY_COLLECTION = "failures"
-MEMORY_TOP_K = 3
-MEMORY_SIMILARITY_THRESHOLD = 0.75
+MEMORY_TOP_K = int(os.getenv("MEMORY_TOP_K", "3"))
+# 0.75 threshold: lower thresholds pull semantically unrelated tasks as false-positive context
+MEMORY_SIMILARITY_THRESHOLD = float(os.getenv("MEMORY_SIMILARITY_THRESHOLD", "0.75"))
 
 # ── Evaluation ───────────────────────────────────────────────
 RESULTS_DIR = os.path.join(_ROOT, "results")

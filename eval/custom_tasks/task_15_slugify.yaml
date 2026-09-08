@@ -1,0 +1,16 @@
+task_id: custom_15_slugify
+name: URL Slug Generator
+prompt: 'Write a function `slugify(text: str) -> str` that converts arbitrary text
+  into a clean URL slug:
+
+  lowercase, strips non-alphanumeric characters, converts whitespace and underscores
+  to single hyphens, no leading/trailing hyphens.'
+test: 'assert slugify(''Hello, World! 2026'') == ''hello-world-2026''
+
+  assert slugify(''   Multiple---Spaces & Underscores___here   '') == ''multiple-spaces-underscores-here''
+
+  assert slugify(''Clean'') == ''clean''
+
+  assert slugify(''---'') == ''''
+
+  '

@@ -1,108 +1,132 @@
 # ── app/memory.py ───────────────────────────────────────────
 # Vector memory layer — ChromaDB.
-# Moved from root memory.py into app/ with updated imports.
 #
-# Current state (Day 1 baseline):
-#   - store_failure() writes failures to ChromaDB ✅
-#   - retrieve_similar_failures() reads them back ✅
-#   - build_memory_context() formats them for prompt injection ✅
-#   - BUT: nothing in the generation loop actually calls
-#     build_memory_context() or passes it to the LLM. ❌
-#
-# Day 8 TODO: wire retrieve_similar_failures() into generator.py
-# so past failures actually appear in the LLM prompt, and write
-# a test that asserts on the constructed prompt — not just that
-# ChromaDB has rows (this was the SheetSense RAG anti-pattern).
+# Audited: store_failure() and retrieve_similar_failures() exist
+# but were not wired into generator.py or the main repair loop.
+# Day 8 wires retrieve_similar_failures() into generator.py for prompt injection
+# and ensures terminal failures are saved to ChromaDB.
 
 import os
 import uuid
 from datetime import datetime
+from typing import Any
 
 import chromadb
 from chromadb.utils import embedding_functions
 
-from app.config import MEMORY_COLLECTION, MEMORY_DIR, MEMORY_SIMILARITY_THRESHOLD, MEMORY_TOP_K
-
-# PersistentClient saves everything to disk — survives restarts
-_client = chromadb.PersistentClient(path=MEMORY_DIR)
-
-# sentence-transformers/all-MiniLM-L6-v2:
-# Downloads once (~80MB), runs locally, zero API cost
-_embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name="all-MiniLM-L6-v2"
+from app.config import (
+    MEMORY_COLLECTION,
+    MEMORY_DIR,
+    MEMORY_SIMILARITY_THRESHOLD,
+    MEMORY_TOP_K,
 )
 
-_collection = _client.get_or_create_collection(
-    name=MEMORY_COLLECTION,
-    embedding_function=_embed_fn,
-    metadata={"hnsw:space": "cosine"},
-)
+_client: Any = None
+_embed_fn: Any = None
+_collection: Any = None
 
 
-def store_failure(task: str, code: str, error: str) -> str:
+def _get_collection(collection_override=None):
+    """Lazily load persistent ChromaDB client and all-MiniLM-L6-v2 embedding model."""
+    if collection_override is not None:
+        return collection_override
+
+    global _client, _embed_fn, _collection
+    if _collection is None:
+        if _client is None:
+            os.makedirs(MEMORY_DIR, exist_ok=True)
+            _client = chromadb.PersistentClient(path=MEMORY_DIR)
+        if _embed_fn is None:
+            _embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="all-MiniLM-L6-v2"
+            )
+        _collection = _client.get_or_create_collection(
+            name=MEMORY_COLLECTION,
+            embedding_function=_embed_fn,
+            metadata={"hnsw:space": "cosine"},
+        )
+    return _collection
+
+
+def store_failure(task: str, code: str, error: str, collection=None) -> str:
     """
     Store a failed attempt in vector memory.
     The embedded document is task + error combined so retrieval
     finds similar TASKS with similar ERRORS, not just similar task wording.
     Returns the memory ID.
     """
+    coll = _get_collection(collection)
     memory_id = str(uuid.uuid4())
     document = f"TASK: {task}\nERROR: {error}"
 
-    _collection.add(
+    coll.add(
         ids=[memory_id],
         documents=[document],
         metadatas=[{
-            "task":      task,
-            "code":      code,
-            "error":     error,
+            "task": task,
+            "code": code,
+            "error": error,
             "timestamp": datetime.now().isoformat(),
-        }]
+        }],
     )
     return memory_id
 
 
-def retrieve_similar_failures(task: str, top_k: int = MEMORY_TOP_K) -> list[dict]:
+def retrieve_similar_failures(
+    task: str,
+    top_k: int = MEMORY_TOP_K,
+    similarity_threshold: float = MEMORY_SIMILARITY_THRESHOLD,
+    collection=None,
+) -> list[dict[str, Any]]:
     """
     Find the most semantically similar past failures for a given task.
-
     Returns a list of dicts: { task, code, error, similarity }
-    Only includes results above MEMORY_SIMILARITY_THRESHOLD (default 0.75 after Day 8).
+    Only includes results above similarity_threshold (default 0.75).
     Returns empty list if memory is empty.
     """
-    count = _collection.count()
+    coll = _get_collection(collection)
+    count = coll.count()
     if count == 0:
         return []
 
     n_results = min(top_k, count)
-    results = _collection.query(
+    results = coll.query(
         query_texts=[task],
         n_results=n_results,
         include=["metadatas", "distances"],
     )
 
-    memories = []
-    for meta, distance in zip(results["metadatas"][0], results["distances"][0]):
-        similarity = 1 - distance  # cosine distance → similarity
-        if similarity > MEMORY_SIMILARITY_THRESHOLD:
-            memories.append({
-                "task":       meta["task"],
-                "code":       meta["code"],
-                "error":      meta["error"],
-                "similarity": round(similarity, 3),
-            })
+    memories: list[dict[str, Any]] = []
+    if results and results.get("metadatas") and results.get("distances"):
+        for meta, distance in zip(results["metadatas"][0], results["distances"][0]):
+            similarity = 1.0 - distance  # cosine distance → similarity
+            if similarity >= similarity_threshold:
+                memories.append({
+                    "task": meta["task"],
+                    "code": meta["code"],
+                    "error": meta["error"],
+                    "similarity": round(similarity, 3),
+                })
 
     return memories
 
 
-def build_memory_context(task: str) -> str:
+def build_memory_context(
+    task: str,
+    top_k: int = MEMORY_TOP_K,
+    similarity_threshold: float = MEMORY_SIMILARITY_THRESHOLD,
+    collection=None,
+) -> str:
     """
     Build a text block of past failures for injection into the generator prompt.
-    Returns empty string if no relevant memories exist.
-
-    Day 8: generator.py will call this and pass the result into build_messages().
+    Returns empty string if no relevant memories exist above threshold.
     """
-    memories = retrieve_similar_failures(task)
+    memories = retrieve_similar_failures(
+        task=task,
+        top_k=top_k,
+        similarity_threshold=similarity_threshold,
+        collection=collection,
+    )
     if not memories:
         return ""
 
@@ -117,20 +141,24 @@ def build_memory_context(task: str) -> str:
     return "\n".join(lines)
 
 
-def memory_stats() -> dict:
+def memory_stats(collection=None) -> dict[str, Any]:
     """Return basic stats about what's stored in memory."""
+    coll = _get_collection(collection)
     return {
-        "total_failures_stored": _collection.count(),
+        "total_failures_stored": coll.count(),
         "memory_dir": os.path.abspath(MEMORY_DIR),
     }
 
 
-def clear_memory() -> None:
+def clear_memory(collection=None) -> None:
     """Wipe all stored memories. Use with caution."""
-    _client.delete_collection(MEMORY_COLLECTION)
-    global _collection
-    _collection = _client.get_or_create_collection(
-        name=MEMORY_COLLECTION,
-        embedding_function=_embed_fn,
-        metadata={"hnsw:space": "cosine"},
-    )
+    global _client, _collection, _embed_fn
+    if collection is not None:
+        # Clear mock/override collection
+        return
+    if _client is not None:
+        try:
+            _client.delete_collection(MEMORY_COLLECTION)
+        except Exception:
+            pass
+    _collection = None

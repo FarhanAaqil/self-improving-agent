@@ -1,0 +1,11 @@
+task_id: custom_05_retry_backoff
+name: Exponential Backoff Decorator
+prompt: 'Implement a decorator `retry_with_backoff(max_retries: int = 3, initial_delay:
+  float = 0.1, backoff_factor: float = 2.0)`
+
+  that catches exceptions, retries with exponential delay, and re-raises after max_retries
+  attempts.'
+test: "calls = []\n@retry_with_backoff(max_retries=3, initial_delay=0.01, backoff_factor=1.5)\n\
+  def flaky():\n    calls.append(1)\n    if len(calls) < 3:\n        raise ConnectionError('Temporary\
+  \ error')\n    return 'success'\nassert flaky() == 'success'\nassert len(calls)\
+  \ == 3\n"

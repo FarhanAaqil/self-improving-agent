@@ -1,0 +1,17 @@
+task_id: custom_02_token_bucket
+name: Token Bucket Rate Limiter
+prompt: 'Implement a class `TokenBucket` with `__init__(self, capacity: float, refill_rate:
+  float)` and
+
+  `allow_request(self, tokens: float = 1.0, current_time: float = 0.0) -> bool`.
+
+  `refill_rate` is tokens added per second. `capacity` is maximum tokens held.'
+test: 'bucket = TokenBucket(capacity=5.0, refill_rate=1.0)
+
+  assert bucket.allow_request(tokens=3.0, current_time=0.0) is True
+
+  assert bucket.allow_request(tokens=3.0, current_time=0.0) is False
+
+  assert bucket.allow_request(tokens=2.0, current_time=2.0) is True
+
+  '

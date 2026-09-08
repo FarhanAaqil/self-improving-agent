@@ -1,0 +1,10 @@
+task_id: custom_11_trie_autocomplete
+name: Trie Prefix Autocomplete
+prompt: 'Implement a class `Trie` with `insert(word: str) -> None` and
+
+  `autocomplete(prefix: str, limit: int = 5) -> list[str]` returning words starting
+  with prefix in alphabetical order.'
+test: "trie = Trie()\nfor word in ['apple', 'app', 'application', 'banana', 'apply']:\n\
+  \    trie.insert(word)\nassert trie.autocomplete('app', limit=3) == ['app', 'apple',\
+  \ 'application']\nassert trie.autocomplete('ban') == ['banana']\nassert trie.autocomplete('cat')\
+  \ == []\n"
