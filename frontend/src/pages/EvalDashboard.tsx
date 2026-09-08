@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -8,13 +9,21 @@ import {
   Clock,
   Layers,
   Loader2,
+  Play,
   RefreshCw,
+  Sliders,
+  Sparkles,
 } from 'lucide-react'
-import { getLatestEval } from '../api/client'
-import type { EvalResultOut } from '../api/types'
+import { getLatestEval, triggerEval } from '../api/client'
+import type { EvalResultOut, EvalRunOut, EvalRunRequest } from '../api/types'
 import EvalChart, { type EvalDataPoint } from '../components/EvalChart'
 
 export default function EvalDashboard() {
+  const [showRunModal, setShowRunModal] = useState(false)
+  const [benchmark, setBenchmark] = useState('humaneval')
+  const [subsetSize, setSubsetSize] = useState(50)
+  const [evalNotification, setEvalNotification] = useState<string | null>(null)
+
   const {
     data: evalResult,
     isLoading,
@@ -27,10 +36,27 @@ export default function EvalDashboard() {
     queryFn: getLatestEval,
   })
 
+  const runMutation = useMutation<EvalRunOut, Error, EvalRunRequest>({
+    mutationFn: triggerEval,
+    onSuccess: (data) => {
+      setEvalNotification(
+        `Evaluation ${data.eval_id} dispatched in background. Problems are executing sequentially in the sandbox.`
+      )
+      setShowRunModal(false)
+    },
+  })
+
+  const handleTriggerEval = () => {
+    setEvalNotification(null)
+    runMutation.mutate({
+      benchmark,
+      subset_size: subsetSize,
+    })
+  }
+
   // Prepare chart points from latest eval or historical records
   const chartData: EvalDataPoint[] = []
   if (evalResult && evalResult.pass_at_1 !== null && evalResult.pass_at_1 !== undefined) {
-    // Baseline checkpoint + current checkpoint
     chartData.push({
       date: 'Baseline (Zero-shot)',
       passAt1: Math.max(0, (evalResult.pass_at_1 || 50) - 18),
@@ -58,16 +84,115 @@ export default function EvalDashboard() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition-colors cursor-pointer disabled:opacity-50 self-start sm:self-auto"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-indigo-400' : ''}`} />
-          <span>Refresh Results</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setShowRunModal(!showRunModal)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-sm shadow-indigo-500/20 transition-all cursor-pointer"
+          >
+            <Play className="h-3.5 w-3.5 fill-white" />
+            <span>Trigger Eval Run</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-indigo-400' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
+
+      {/* Trigger Eval Configuration Panel */}
+      {showRunModal && (
+        <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-5 shadow-lg space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+              <Sliders className="h-4 w-4 text-indigo-400" />
+              <span>Configure Benchmark Evaluation</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRunModal(false)}
+              className="text-slate-400 hover:text-slate-200 text-xs font-mono"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">Target Benchmark</label>
+              <select
+                value={benchmark}
+                onChange={(e) => setBenchmark(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="humaneval">HumanEval (standard code synthesis)</option>
+                <option value="custom">Custom Tasks (dev engineering specs)</option>
+              </select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-300 font-medium">Problem Subset Size</label>
+                <span className="font-mono text-indigo-400 font-semibold">{subsetSize} problems</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={50}
+                step={5}
+                value={subsetSize}
+                onChange={(e) => setSubsetSize(Number(e.target.value))}
+                className="w-full accent-indigo-500 cursor-pointer"
+              />
+              <span className="text-[11px] text-slate-500 block mt-1">
+                50-problem subset aligns with official repo scope.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={handleTriggerEval}
+              disabled={runMutation.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg shadow-sm cursor-pointer"
+            >
+              {runMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Dispatching...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="h-3.5 w-3.5 fill-white" />
+                  <span>Start Background Evaluation</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dispatched Notification Banner */}
+      {evalNotification && (
+        <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+          <span className="font-mono flex-1">{evalNotification}</span>
+          <button
+            type="button"
+            onClick={() => setEvalNotification(null)}
+            className="text-slate-400 hover:text-slate-200"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {isLoading && (
         <div className="p-16 border border-slate-800 rounded-xl bg-slate-900/30 flex flex-col items-center justify-center space-y-3">
