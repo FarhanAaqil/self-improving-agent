@@ -1,7 +1,7 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { AlertCircle, ArrowRight, Loader2, Play, Sliders } from 'lucide-react'
-import { generateAndRepair } from '../api/client'
+import { AlertCircle, Loader2, Play, Sliders } from 'lucide-react'
+import { generateAndRepair, getRun } from '../api/client'
 import type { RunOut } from '../api/types'
 
 export default function NewRun() {
@@ -11,12 +11,25 @@ export default function NewRun() {
   const [skipAgents, setSkipAgents] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
-  const [activeRun, setActiveRun] = useState<RunOut | null>(null)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+
+  // Polling hook: polls GET /runs/{run_id} while the run is running or pending
+  const { data: polledRun } = useQuery<RunOut>({
+    queryKey: ['run', activeRunId],
+    queryFn: () => getRun(activeRunId!),
+    enabled: Boolean(activeRunId),
+    refetchInterval: (query) => {
+      const state = query.state.data
+      if (!state) return 1000
+      const isTerminal = ['success', 'failed', 'max_retries_exceeded'].includes(state.final_status)
+      return isTerminal ? false : 1200
+    },
+  })
 
   const mutation = useMutation({
     mutationFn: generateAndRepair,
     onSuccess: (data) => {
-      setActiveRun(data)
+      setActiveRunId(data.run_id)
     },
   })
 
@@ -37,7 +50,7 @@ export default function NewRun() {
       return
     }
     setValidationError(null)
-    setActiveRun(null)
+    setActiveRunId(null)
 
     mutation.mutate({
       task_description: taskDescription.trim(),
@@ -46,6 +59,8 @@ export default function NewRun() {
       skip_agents: skipAgents,
     })
   }
+
+  const currentRun = polledRun || mutation.data
 
   return (
     <div className="space-y-6">
@@ -187,9 +202,9 @@ export default function NewRun() {
         </div>
       )}
 
-      {activeRun && (
+      {currentRun && (
         <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 text-xs text-slate-400 font-mono">
-          Run {activeRun.run_id} finished with status: {activeRun.final_status} ({activeRun.attempts.length} attempts)
+          Run {currentRun.run_id} status: {currentRun.final_status} ({currentRun.attempts.length} attempts)
         </div>
       )}
     </div>
