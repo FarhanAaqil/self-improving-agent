@@ -37,6 +37,31 @@ def estimate_pass_at_k(n: int, c: int, k: int) -> float:
         return 0.0
 
 
+def calculate_unbiased_benchmark_pass_at_k(
+    samples_per_problem: dict[str, list[bool]],
+    k_list: list[int] = (1, 5),
+) -> dict[str, float]:
+    """
+    Compute aggregate unbiased pass@k across all problems:
+    average of estimate_pass_at_k(n, c, k) for each problem.
+    """
+    if not samples_per_problem:
+        return {f"pass@{k}": 0.0 for k in k_list}
+
+    aggregates: dict[int, list[float]] = {k: [] for k in k_list}
+    for _pid, outcomes in samples_per_problem.items():
+        n = len(outcomes)
+        c = sum(1 for passed in outcomes if passed)
+        for k in k_list:
+            if n >= k:
+                aggregates[k].append(estimate_pass_at_k(n, c, k))
+
+    return {
+        f"pass@{k}": round((sum(vals) / len(vals)) * 100.0, 2) if vals else 0.0
+        for k, vals in aggregates.items()
+    }
+
+
 def calculate_pass_at_k_metrics(problem_results: list[dict[str, Any]]) -> dict[str, float]:
     """
     Calculate pass@1, pass@5, avg_attempts, and avg_latency_ms from problem results.
