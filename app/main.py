@@ -221,6 +221,8 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     update_run_status(run_id, final_status=final_status, total_attempts=attempts_done)
 
     full_run = get_run_with_attempts(run_id)
+    if not full_run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
     return RunOut(**full_run)
 
 
