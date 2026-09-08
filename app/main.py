@@ -30,6 +30,7 @@ from app.db import (
 )
 from app.documentation_agent import document_code
 from app.generator import generate_code
+from app.metrics import calculate_quality_metrics
 from app.performance_agent import analyze_performance
 from app.sandbox import _is_docker_available, run_code
 from app.schemas import (
@@ -292,6 +293,20 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
                 critique_conf = None
                 critique_re = None
 
+        quality_overall_score = None
+        quality_report_json = None
+        try:
+            metrics_report = calculate_quality_metrics(
+                code=working_code,
+                generated_tests=generated_tests,
+                performance_notes=performance_notes,
+                security_audit=security_audit,
+            )
+            quality_overall_score = metrics_report.get("overall_score")
+            quality_report_json = json.dumps(metrics_report)
+        except Exception:
+            pass
+
         update_attempt_review(
             attempt_id=passing_attempt_id,
             critique_confidence=critique_conf,
@@ -299,6 +314,8 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
             generated_tests=generated_tests,
             performance_notes=performance_notes,
             security_audit=security_audit,
+            quality_overall_score=quality_overall_score,
+            quality_report_json=quality_report_json,
             generated_code=working_code,
         )
 
