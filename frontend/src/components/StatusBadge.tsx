@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock, Loader2, XCircle } from 'lucide-react'
+import { Check, Loader2, X } from 'lucide-react'
 
 interface StatusBadgeProps {
   status: string
@@ -8,50 +8,57 @@ interface StatusBadgeProps {
 export default function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
   const norm = status.toLowerCase()
 
-  const baseClasses = `inline-flex items-center gap-1.5 font-sans font-medium bg-surface border border-border border-l-[3px] rounded-[2px] transition-colors ${
-    size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs'
-  }`
+  const isSm = size === 'sm'
+  const py = isSm ? 'py-0.5' : 'py-1'
+  const px = isSm ? 'px-2' : 'px-2.5'
+  const textSz = isSm ? 'text-[11px]' : 'text-xs'
 
   if (norm === 'success') {
     return (
-      <span className={`${baseClasses} border-l-status-success text-ink`}>
-        <CheckCircle2 className="h-3.5 w-3.5 text-status-success shrink-0" />
-        <span>Success</span>
+      <span
+        className={`inline-flex items-center gap-1.5 font-mono font-medium border border-status-success/50 bg-status-success-subtle text-status-success ${px} ${py} ${textSz}`}
+      >
+        <span className="text-[10px] font-bold">⌐</span>
+        <Check className="h-3 w-3 stroke-[2.5]" />
+        <span>passed</span>
+        <span className="text-[10px] font-bold">¬</span>
       </span>
     )
   }
 
   if (norm === 'failed' || norm === 'max_retries_exceeded') {
     return (
-      <span className={`${baseClasses} border-l-status-danger text-ink`}>
-        <XCircle className="h-3.5 w-3.5 text-status-danger shrink-0" />
-        <span>{norm === 'max_retries_exceeded' ? 'Max Retries' : 'Failed'}</span>
+      <span
+        className={`inline-flex items-center gap-1.5 font-mono font-medium border border-status-danger/50 bg-status-danger-subtle text-status-danger ${px} ${py} ${textSz}`}
+      >
+        <span className="text-[10px] font-bold">⌐</span>
+        <X className="h-3 w-3 stroke-[2.5]" />
+        <span>{norm === 'max_retries_exceeded' ? 'max retries' : 'failed'}</span>
+        <span className="text-[10px] font-bold">¬</span>
       </span>
     )
   }
 
   if (norm === 'running' || norm === 'started') {
     return (
-      <span className={`${baseClasses} border-l-accent text-ink`}>
-        <Loader2 className="h-3.5 w-3.5 text-accent animate-spin shrink-0" />
-        <span>Running</span>
-      </span>
-    )
-  }
-
-  if (norm === 'generated') {
-    return (
-      <span className={`${baseClasses} border-l-status-warning text-ink`}>
-        <Clock className="h-3.5 w-3.5 text-status-warning shrink-0" />
-        <span>Generated</span>
+      <span
+        className={`inline-flex items-center gap-1.5 font-mono font-semibold border border-accent/50 bg-accent-subtle text-accent ${px} ${py} ${textSz}`}
+      >
+        <span className="text-[10px] font-bold">⌐</span>
+        <Loader2 className="h-3 w-3 animate-spin" />
+        <span>running</span>
+        <span className="text-[10px] font-bold">¬</span>
       </span>
     )
   }
 
   return (
-    <span className={`${baseClasses} border-l-ink-tertiary text-ink-secondary`}>
-      <AlertTriangle className="h-3.5 w-3.5 text-ink-tertiary shrink-0" />
+    <span
+      className={`inline-flex items-center gap-1.5 font-mono text-ink-secondary border border-border bg-surface-sunken ${px} ${py} ${textSz}`}
+    >
+      <span className="text-[10px] font-bold">⌐</span>
       <span>{status}</span>
+      <span className="text-[10px] font-bold">¬</span>
     </span>
   )
 }
