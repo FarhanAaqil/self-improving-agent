@@ -58,3 +58,11 @@ def test_eval_endpoints():
     run_resp = client.post("/eval/run", json={"benchmark": "humaneval", "subset_size": 2})
     assert run_resp.status_code == 200
     assert run_resp.json()["status"] == "started"
+
+
+def test_frontend_spa_serving():
+    # Root / serves React HTML
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "html" in resp.headers.get("content-type", "").lower()
+

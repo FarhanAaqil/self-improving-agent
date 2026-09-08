@@ -7,6 +7,8 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import (
     MODEL,
@@ -346,3 +348,23 @@ def run_eval_endpoint(req: EvalRunRequest, background_tasks: BackgroundTasks):
         status="started",
         message=f"Evaluation {eval_id} started in background for benchmark '{req.benchmark}'.",
     )
+
+
+# ── Frontend Static Files Mount ──────────────────────────────
+_FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+
+if os.path.exists(_FRONTEND_DIST):
+    _assets_dir = os.path.join(_FRONTEND_DIST, "assets")
+    if os.path.exists(_assets_dir):
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(_FRONTEND_DIST, full_path)
+        if full_path and os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(_FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend build index.html not found.")
+
