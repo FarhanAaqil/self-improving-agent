@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.code_security_audit import CodeSecurityAudit
 from app.config import (
     MODEL,
     RESULTS_DIR,
@@ -24,9 +25,12 @@ from app.db import (
     insert_eval_run,
     insert_run,
     list_runs,
+    update_attempt_review,
     update_run_status,
 )
+from app.documentation_agent import document_code
 from app.generator import generate_code
+from app.performance_agent import analyze_performance
 from app.sandbox import _is_docker_available, run_code
 from app.schemas import (
     EvalResultOut,
@@ -39,6 +43,7 @@ from app.schemas import (
     GenerateRequest,
     RunOut,
 )
+from app.test_agent import generate_unit_tests
 
 # Ensure SQLite tables exist immediately upon import
 init_db()
@@ -165,6 +170,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     working_code = None
     working_output = None
     attempts_done = 0
+    passing_attempt_id: int | None = None
 
     for attempt in range(1, req.max_attempts + 1):
         attempts_done = attempt
@@ -196,7 +202,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
         if exec_res["success"]:
             working_code = code
             working_output = exec_res.get("output") or ""
-            insert_attempt(
+            passing_attempt_id = insert_attempt(
                 run_id=run_id,
                 attempt_number=attempt,
                 generated_code=code,
@@ -243,12 +249,42 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
             if should_early_stop:
                 break
 
-    # Optional Critique review if working code was found
-    if working_code and "critique" not in req.skip_agents:
-        try:
-            critique_code(req.task_description, working_code, working_output, model_override=model_name)
-        except Exception:
-            pass
+    # Post-success review pipeline
+    if working_code and passing_attempt_id is not None:
+        generated_tests = None
+        performance_notes = None
+        security_audit = None
+        critique_conf = None
+        critique_re = None
+
+        if "test" not in req.skip_agents and "tests" not in req.skip_agents:
+            generated_tests = generate_unit_tests(req.task_description, working_code, model_override=model_name)
+
+        if "performance" not in req.skip_agents:
+            performance_notes = analyze_performance(req.task_description, working_code, model_override=model_name)
+
+        if "security_audit" not in req.skip_agents and "security" not in req.skip_agents:
+            security_audit = CodeSecurityAudit.audit(req.task_description, working_code, model_override=model_name)
+
+        if "docs" not in req.skip_agents and "documentation" not in req.skip_agents:
+            documented_code = document_code(req.task_description, working_code, model_override=model_name)
+            if documented_code:
+                working_code = documented_code
+
+        if "critique" not in req.skip_agents:
+            c_res = critique_code(req.task_description, working_code, working_output, model_override=model_name)
+            critique_conf = c_res.get("confidence")
+            critique_re = c_res.get("reasoning")
+
+        update_attempt_review(
+            attempt_id=passing_attempt_id,
+            critique_confidence=critique_conf,
+            critique_reasoning=critique_re,
+            generated_tests=generated_tests,
+            performance_notes=performance_notes,
+            security_audit=security_audit,
+            generated_code=working_code,
+        )
 
     if working_code:
         final_status = "success"
