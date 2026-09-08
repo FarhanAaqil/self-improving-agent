@@ -65,12 +65,24 @@ def generate_code(
     _client = client or Groq(api_key=api_key or GROQ_API_KEY)
     messages = build_messages(task, error, attempt, memory_context)
 
-    response = _client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=0.1,
-        max_tokens=2048,
-    )
+    try:
+        response = _client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=2048,
+        )
+    except Exception as e:
+        if "model_not_found" in str(e).lower() or "does not exist" in str(e).lower():
+            response = _client.chat.completions.create(
+                model="qwen/qwen3.8-27b",
+                messages=messages,
+                temperature=0.1,
+                max_tokens=2048,
+            )
+        else:
+            raise
+
     raw = response.choices[0].message.content.strip()
     return _clean_code(raw)
 

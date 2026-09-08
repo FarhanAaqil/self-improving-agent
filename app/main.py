@@ -114,9 +114,19 @@ def verify_api_access(
     """
     Verify access using API_KEY if configured in environment.
     Supports X-API-Key header or Authorization: Bearer <token>.
-    If API_KEY is unset, permits requests for frictionless local development.
+    If API_KEY is unset or a placeholder, permits requests for frictionless local development.
     """
-    if not API_KEY:
+    from app.config import API_KEY
+
+    if not API_KEY or API_KEY.strip().lower() in (
+        "",
+        "your-secret-key-here",
+        "your-api-key-here",
+        "your-secret-api-key-here",
+        "placeholder",
+        "none",
+        "false",
+    ):
         return True
 
     provided_token = header_key or (bearer.credentials if bearer else None)
