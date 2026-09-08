@@ -219,10 +219,12 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
                         model_override=model_name,
                     )
                     critique_conf = c_res.get("confidence")
+                    critique_re = c_res.get("reasoning")
                     if critique_conf is not None and critique_conf < 0.3:
                         should_early_stop = True
                 except Exception:
                     critique_conf = None
+                    critique_re = None
 
             insert_attempt(
                 run_id=run_id,
@@ -235,6 +237,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
                 latency_ms=exec_res.get("latency_ms"),
                 model_name=model_name,
                 critique_confidence=critique_conf,
+                critique_reasoning=critique_re,
             )
 
             if should_early_stop:

@@ -52,6 +52,7 @@ export interface AttemptOut {
   tokens_used?: number | null
   model_name?: string | null
   critique_confidence?: number | null
+  critique_reasoning?: string | null
   generated_tests?: string | null
   performance_notes?: string | null
   security_audit?: string | null

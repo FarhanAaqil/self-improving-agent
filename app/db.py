@@ -43,6 +43,7 @@ def init_db(db_path: str = DB_PATH) -> None:
             tokens_used INTEGER,
             model_name TEXT,
             critique_confidence REAL,
+            critique_reasoning TEXT,
             generated_tests TEXT,
             performance_notes TEXT,
             security_audit TEXT,
@@ -67,6 +68,23 @@ def init_db(db_path: str = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_attempts_timestamp ON attempts(timestamp DESC);
         """)
+
+        # Auto-migrate table columns if upgrading existing database
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(attempts)").fetchall()}
+        if "critique_confidence" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN critique_confidence REAL;")
+        if "critique_reasoning" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN critique_reasoning TEXT;")
+        if "generated_tests" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN generated_tests TEXT;")
+        if "performance_notes" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN performance_notes TEXT;")
+        if "security_audit" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN security_audit TEXT;")
+        if "quality_overall_score" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN quality_overall_score REAL;")
+        if "quality_report_json" not in existing_cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN quality_report_json TEXT;")
 
 
 def insert_run(
@@ -122,6 +140,7 @@ def insert_attempt(
     tokens_used: int | None = None,
     model_name: str | None = None,
     critique_confidence: float | None = None,
+    critique_reasoning: str | None = None,
     generated_tests: str | None = None,
     performance_notes: str | None = None,
     security_audit: str | None = None,
@@ -137,19 +156,68 @@ def insert_attempt(
             INSERT INTO attempts (
                 run_id, attempt_number, generated_code, stdout, stderr,
                 exit_code, success, latency_ms, tokens_used, model_name,
-                critique_confidence, generated_tests, performance_notes,
+                critique_confidence, critique_reasoning, generated_tests, performance_notes,
                 security_audit, quality_overall_score, quality_report_json, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id, attempt_number, generated_code, stdout, stderr,
                 exit_code, int(success), latency_ms, tokens_used, model_name,
-                critique_confidence, generated_tests, performance_notes,
+                critique_confidence, critique_reasoning, generated_tests, performance_notes,
                 security_audit, quality_overall_score, quality_report_json, now,
             ),
         )
         return cursor.lastrowid
+
+
+def update_attempt_review(
+    attempt_id: int,
+    critique_confidence: float | None = None,
+    critique_reasoning: str | None = None,
+    generated_tests: str | None = None,
+    performance_notes: str | None = None,
+    security_audit: str | None = None,
+    quality_overall_score: float | None = None,
+    quality_report_json: str | None = None,
+    generated_code: str | None = None,
+    db_path: str = DB_PATH,
+) -> None:
+    updates: list[str] = []
+    params: list[Any] = []
+
+    if critique_confidence is not None:
+        updates.append("critique_confidence = ?")
+        params.append(critique_confidence)
+    if critique_reasoning is not None:
+        updates.append("critique_reasoning = ?")
+        params.append(critique_reasoning)
+    if generated_tests is not None:
+        updates.append("generated_tests = ?")
+        params.append(generated_tests)
+    if performance_notes is not None:
+        updates.append("performance_notes = ?")
+        params.append(performance_notes)
+    if security_audit is not None:
+        updates.append("security_audit = ?")
+        params.append(security_audit)
+    if quality_overall_score is not None:
+        updates.append("quality_overall_score = ?")
+        params.append(quality_overall_score)
+    if quality_report_json is not None:
+        updates.append("quality_report_json = ?")
+        params.append(quality_report_json)
+    if generated_code is not None:
+        updates.append("generated_code = ?")
+        params.append(generated_code)
+
+    if not updates:
+        return
+
+    params.append(attempt_id)
+    sql = f"UPDATE attempts SET {', '.join(updates)} WHERE attempt_id = ?"
+    with get_connection(db_path) as conn:
+        conn.execute(sql, params)
 
 
 def get_run(run_id: str, db_path: str = DB_PATH) -> dict[str, Any] | None:
