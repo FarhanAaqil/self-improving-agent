@@ -116,9 +116,9 @@ def verify_api_access(
     Supports X-API-Key header or Authorization: Bearer <token>.
     If API_KEY is unset or a placeholder, permits requests for frictionless local development.
     """
-    from app.config import API_KEY
+    configured_key = API_KEY
 
-    if not API_KEY or API_KEY.strip().lower() in (
+    if not configured_key or str(configured_key).strip().lower() in (
         "",
         "your-secret-key-here",
         "your-api-key-here",
@@ -130,7 +130,7 @@ def verify_api_access(
         return True
 
     provided_token = header_key or (bearer.credentials if bearer else None)
-    if not provided_token or provided_token != API_KEY:
+    if not provided_token or provided_token != configured_key:
         raise HTTPException(
             status_code=401,
             detail="Unauthorized: Invalid or missing API key (X-API-Key or Bearer token).",

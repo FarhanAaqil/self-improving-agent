@@ -44,7 +44,7 @@ const TEMPLATE_PROMPTS = [
 
 export default function NewRun() {
   const [taskDescription, setTaskDescription] = useState('')
-  const [model, setModel] = useState('llama-3.3-70b-versatile')
+  const [model, setModel] = useState('qwen/qwen3.8-27b')
   const [maxAttempts, setMaxAttempts] = useState(3)
   const [skipAgents, setSkipAgents] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -285,7 +285,9 @@ export default function NewRun() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full bg-surface border border-border rounded p-2 text-ink font-mono focus:outline-none focus:border-accent"
                 >
-                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (primary)</option>
+                  <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b (recommended)</option>
+                  <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (high capacity)</option>
+                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
                   <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (fast)</option>
                 </select>
               </div>
