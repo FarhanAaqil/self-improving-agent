@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertCircle,
-  Clock,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Filter,
   History,
-  Layers,
   Loader2,
   RefreshCw,
   Search,
@@ -19,6 +19,8 @@ import StatusBadge from '../components/StatusBadge'
 export default function RunHistory() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const {
     data: runs = [],
@@ -32,6 +34,11 @@ export default function RunHistory() {
     queryFn: () => listRuns(100),
     refetchInterval: 10000,
   })
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter, searchQuery, pageSize])
 
   const filteredRuns = runs.filter((run) => {
     const matchesStatus =
@@ -48,6 +55,12 @@ export default function RunHistory() {
 
     return matchesStatus && matchesSearch
   })
+
+  const totalItems = filteredRuns.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = Math.min(startIndex + pageSize, totalItems)
+  const paginatedRuns = filteredRuns.slice(startIndex, endIndex)
 
   return (
     <div className="space-y-6">
@@ -147,14 +160,14 @@ export default function RunHistory() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredRuns.length === 0 ? (
+                {paginatedRuns.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-slate-500 italic">
                       No matching runs found in database.
                     </td>
                   </tr>
                 ) : (
-                  filteredRuns.map((run) => (
+                  paginatedRuns.map((run) => (
                     <tr key={run.run_id} className="hover:bg-slate-850/50 transition-colors">
                       <td className="py-3 px-4 font-mono font-medium text-slate-200">
                         <Link
@@ -191,6 +204,54 @@ export default function RunHistory() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer */}
+          {totalItems > 0 && (
+            <div className="px-4 py-3 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-2 font-mono">
+                <span>
+                  Showing {startIndex + 1}–{endIndex} of {totalItems} runs
+                </span>
+                <span>•</span>
+                <div className="flex items-center gap-1">
+                  <span>Per page:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="font-mono mr-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
