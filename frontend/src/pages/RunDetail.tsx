@@ -14,6 +14,7 @@ import { Link, useParams } from 'react-router-dom'
 import { getRun } from '../api/client'
 import type { RunOut } from '../api/types'
 import AttemptCard from '../components/AttemptCard'
+import CodeDiffView from '../components/CodeDiffView'
 import StatusBadge from '../components/StatusBadge'
 
 export default function RunDetail() {
@@ -130,6 +131,11 @@ export default function RunDetail() {
           </p>
         </div>
       </div>
+
+      {/* Code diff view between attempts if 2 or more attempts exist */}
+      {run.attempts.length >= 2 && (
+        <CodeDiffView attempts={run.attempts} />
+      )}
 
       {/* Attempts Timeline */}
       <div className="space-y-4">
