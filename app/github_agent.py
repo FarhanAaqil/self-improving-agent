@@ -5,6 +5,7 @@ Fully no-op when GITHUB_TOKEN is not set, verified at import time.
 """
 
 import base64
+import re
 from typing import Any
 
 import httpx
@@ -67,8 +68,15 @@ def open_pull_request_for_run(
     solution_code = best_attempt.get("generated_code", "")
 
     task_desc = run_data.get("task_description", "Unknown Task")
-    branch_name = f"agent/solution-{run_id}"
-    file_path = f"solutions/solution_{run_id}.py"
+    safe_run_id = re.sub(r"[^a-zA-Z0-9_-]", "", run_id)
+    if not safe_run_id:
+        return {
+            "status": "error",
+            "error": f"Invalid run_id: '{run_id}' contains no valid characters.",
+            "pr_url": None,
+        }
+    branch_name = f"agent/solution-{safe_run_id}"
+    file_path = f"solutions/solution_{safe_run_id}.py"
 
     http_client = client or httpx.Client(timeout=15.0)
     headers = {

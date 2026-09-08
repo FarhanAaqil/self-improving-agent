@@ -1,17 +1,22 @@
 import glob
 import json
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
 from app.code_security_audit import CodeSecurityAudit
 from app.config import (
+    ALLOWED_ORIGINS,
+    API_KEY,
     MODEL,
     RESULTS_DIR,
     SANDBOX_TIMEOUT,
@@ -46,6 +51,8 @@ from app.schemas import (
 )
 from app.test_agent import generate_unit_tests
 
+logger = logging.getLogger("self_improving_agent")
+
 # Ensure SQLite tables exist immediately upon import
 init_db()
 
@@ -63,14 +70,63 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS enabled for local Vite / React dashboard development
+# CORS enabled for specified origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Security response headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' http://localhost:* http://127.0.0.1:* https:;"
+    )
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if request.url.path.startswith(("/generate", "/execute", "/runs", "/eval")):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+# Optional API Key Authentication
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def verify_api_access(
+    header_key: Optional[str] = Security(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+):
+    """
+    Verify access using API_KEY if configured in environment.
+    Supports X-API-Key header or Authorization: Bearer <token>.
+    If API_KEY is unset, permits requests for frictionless local development.
+    """
+    if not API_KEY:
+        return True
+
+    provided_token = header_key or (bearer.credentials if bearer else None)
+    if not provided_token or provided_token != API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Invalid or missing API key (X-API-Key or Bearer token).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return True
 
 
 # ── System ───────────────────────────────────────────────────
@@ -90,7 +146,12 @@ def health_check():
 
 # ── Endpoint 1: POST /generate ───────────────────────────────
 
-@app.post("/generate", response_model=GenerateOut, tags=["Agent"])
+@app.post(
+    "/generate",
+    response_model=GenerateOut,
+    dependencies=[Depends(verify_api_access)],
+    tags=["Agent"],
+)
 def generate_endpoint(req: GenerateRequest):
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     model_name = req.model or MODEL
@@ -98,7 +159,11 @@ def generate_endpoint(req: GenerateRequest):
     try:
         code = generate_code(req.task_description, model=model_name)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
+        logger.error("LLM generation failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="LLM generation encountered an internal server error.",
+        )
 
     insert_run(run_id, req.task_description, final_status="generated", total_attempts=1)
     insert_attempt(
@@ -114,7 +179,12 @@ def generate_endpoint(req: GenerateRequest):
 
 # ── Endpoint 2: POST /execute/{run_id} ───────────────────────
 
-@app.post("/execute/{run_id}", response_model=ExecuteOut, tags=["Agent"])
+@app.post(
+    "/execute/{run_id}",
+    response_model=ExecuteOut,
+    dependencies=[Depends(verify_api_access)],
+    tags=["Agent"],
+)
 def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
     run = get_run_with_attempts(run_id)
     if not run:
@@ -164,7 +234,12 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
 
 # ── Endpoint 3: POST /generate-and-repair ────────────────────
 
-@app.post("/generate-and-repair", response_model=RunOut, tags=["Agent"])
+@app.post(
+    "/generate-and-repair",
+    response_model=RunOut,
+    dependencies=[Depends(verify_api_access)],
+    tags=["Agent"],
+)
 def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     model_name = req.model or MODEL
@@ -188,6 +263,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
                 model=model_name,
             )
         except Exception as e:
+            logger.error("LLM call failed on attempt %d: %s", attempt, e, exc_info=True)
             insert_attempt(
                 run_id=run_id,
                 attempt_number=attempt,
@@ -198,7 +274,10 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
                 model_name=model_name,
             )
             update_run_status(run_id, final_status="failed", total_attempts=attempt)
-            raise HTTPException(status_code=500, detail=f"LLM call failed on attempt {attempt}: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"LLM call failed on attempt {attempt}. Please check service logs.",
+            )
 
         exec_res = run_code(code, timeout=SANDBOX_TIMEOUT)
 
@@ -369,7 +448,11 @@ def list_runs_endpoint(limit: int = Query(50, ge=1, le=100)):
 
 # ── PR Automation: POST /runs/{run_id}/pr ───────────────────
 
-@app.post("/runs/{run_id}/pr", tags=["Runs"])
+@app.post(
+    "/runs/{run_id}/pr",
+    dependencies=[Depends(verify_api_access)],
+    tags=["Runs"],
+)
 def create_pull_request_endpoint(run_id: str, repo: Optional[str] = None):
     from app.github_agent import open_pull_request_for_run
     result = open_pull_request_for_run(run_id=run_id, repo=repo)
@@ -463,15 +546,20 @@ def _run_eval_job(eval_id: str, benchmark: str, subset_size: int):
             json.dump(results, f, indent=2)
 
     except Exception as e:
-        # Background task error handling
+        logger.error("Eval background job %s failed: %s", eval_id, e, exc_info=True)
         insert_eval_run(
             eval_id=eval_id,
             benchmark_name=benchmark,
-            raw_json=json.dumps({"error": str(e)}),
+            raw_json=json.dumps({"error": "Evaluation execution failed."}),
         )
 
 
-@app.post("/eval/run", response_model=EvalRunOut, tags=["Evaluation"])
+@app.post(
+    "/eval/run",
+    response_model=EvalRunOut,
+    dependencies=[Depends(verify_api_access)],
+    tags=["Evaluation"],
+)
 def run_eval_endpoint(req: EvalRunRequest, background_tasks: BackgroundTasks):
     eval_id = f"eval_{uuid.uuid4().hex[:8]}"
 
@@ -486,20 +574,36 @@ def run_eval_endpoint(req: EvalRunRequest, background_tasks: BackgroundTasks):
 
 
 # ── Frontend Static Files Mount ──────────────────────────────
-_FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
-if os.path.exists(_FRONTEND_DIST):
-    _assets_dir = os.path.join(_FRONTEND_DIST, "assets")
-    if os.path.exists(_assets_dir):
-        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+if _FRONTEND_DIST.exists():
+    _assets_dir = _FRONTEND_DIST / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str):
-        file_path = os.path.join(_FRONTEND_DIST, full_path)
-        if full_path and os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        index_file = os.path.join(_FRONTEND_DIST, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
+        dist_root = _FRONTEND_DIST.resolve()
+        if full_path:
+            # Reject path traversal attempts
+            if ".." in full_path or "%2e" in full_path.lower():
+                raise HTTPException(status_code=403, detail="Forbidden: Path traversal not permitted.")
+
+            target = (_FRONTEND_DIST / full_path).resolve()
+            try:
+                target.relative_to(dist_root)
+            except ValueError:
+                raise HTTPException(status_code=403, detail="Forbidden: Path traversal not permitted.")
+
+            if target.is_file():
+                return FileResponse(str(target))
+
+            # If an explicit file with extension was requested but not found, 404 instead of SPA fallback
+            if target.suffix or ("." in target.name and not target.name.startswith(".")):
+                raise HTTPException(status_code=404, detail="File not found.")
+
+        index_file = dist_root / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
         raise HTTPException(status_code=404, detail="Frontend build index.html not found.")
 

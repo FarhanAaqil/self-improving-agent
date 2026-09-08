@@ -26,3 +26,7 @@ services:
         value: "FarhanAaqil/self-improving-agent"
       - key: GITHUB_TOKEN
         sync: false
+      - key: ALLOW_UNSAFE_HOST_SUBPROCESS
+        value: "false"
+      - key: API_KEY
+        sync: false

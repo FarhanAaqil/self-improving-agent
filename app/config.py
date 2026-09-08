@@ -40,3 +40,16 @@ DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "FarhanAaqil/self-improving-agent")
+
+# ── Security & Hardening ─────────────────────────────────────
+API_KEY = os.getenv("API_KEY")
+ALLOW_UNSAFE_HOST_SUBPROCESS = os.getenv("ALLOW_UNSAFE_HOST_SUBPROCESS", "false").lower() in ("true", "1", "yes")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",")
+    if origin.strip()
+]
+
