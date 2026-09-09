@@ -6,9 +6,10 @@ import {
   Loader2,
   Play,
   Sliders,
+  WifiOff,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { generateAndRepair, getRun } from '../api/client'
+import { generateAndRepair, getHealth, getRun } from '../api/client'
 import type { RunOut } from '../api/types'
 import AttemptCard from '../components/AttemptCard'
 import PipelineStepper, { type PipelineStep } from '../components/PipelineStepper'
@@ -43,12 +44,19 @@ const TEMPLATE_PROMPTS = [
 
 export default function NewRun() {
   const [taskDescription, setTaskDescription] = useState('')
-  const [model, setModel] = useState('qwen/qwen3.8-27b')
+  const [model, setModel] = useState('llama-3.3-70b-versatile')
   const [maxAttempts, setMaxAttempts] = useState(3)
   const [skipAgents, setSkipAgents] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+
+  const { data: health } = useQuery({
+    queryKey: ['health'],
+    queryFn: getHealth,
+    refetchInterval: 20000,
+  })
+  const isApiOnline = health?.status === 'healthy'
 
   // Polling query: polls GET /runs/{run_id} while the agent is running
   const { data: polledRun } = useQuery<RunOut>({
@@ -193,6 +201,14 @@ export default function NewRun() {
         </p>
       </div>
 
+      {/* API Offline Warning */}
+      {health && !isApiOnline && (
+        <div className="flex items-center gap-3 p-3 bg-status-danger-subtle border border-status-danger/30 text-status-danger text-xs font-mono">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>Backend API is unreachable. Check that the FastAPI server is running on port 8000.</span>
+        </div>
+      )}
+
       {/* Input Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-surface border border-border p-5 space-y-4">
@@ -285,10 +301,11 @@ export default function NewRun() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full bg-surface-sunken border border-border p-2 text-ink font-mono focus:outline-none focus:border-accent"
                 >
-                  <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b (recommended)</option>
-                  <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (high capacity)</option>
-                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recommended)</option>
                   <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (fast)</option>
+                  <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b</option>
+                  <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                  <option value="gemma2-9b-it">gemma2-9b-it</option>
                 </select>
               </div>
 
@@ -346,10 +363,16 @@ export default function NewRun() {
 
       {/* Execution Results & Attempt Stream */}
       {displayRun && (
-        <div className="space-y-4 pt-2">
+        <div className="space-y-4 pt-2 animate-slide-in">
           <div className="bg-surface border border-border p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 bg-surface-sunken border border-border flex items-center justify-center text-accent">
+              <div className={`h-9 w-9 border flex items-center justify-center ${
+                isComplete
+                  ? isSuccess
+                    ? 'bg-status-success-subtle border-status-success/40 text-status-success'
+                    : 'bg-status-danger-subtle border-status-danger/40 text-status-danger'
+                  : 'bg-surface-sunken border-border text-accent'
+              }`}>
                 <Layers className="h-4 w-4" />
               </div>
               <div>
@@ -359,6 +382,9 @@ export default function NewRun() {
                 </div>
                 <div className="text-[11px] text-ink-secondary font-mono mt-0.5">
                   attempts: {displayRun.attempts.length} / {displayRun.total_attempts || maxAttempts}
+                  {latestAttempt?.latency_ms && (
+                    <span className="ml-2 text-ink-tertiary">· {latestAttempt.latency_ms}ms last</span>
+                  )}
                 </div>
               </div>
             </div>

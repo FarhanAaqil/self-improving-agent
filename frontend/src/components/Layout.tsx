@@ -86,7 +86,7 @@ export default function Layout() {
           <div className="py-1.5 px-2 bg-surface-sunken border border-border">
             <div className="flex items-center gap-2">
               <span
-                className={`h-2 w-2 rounded-full shrink-0 ${
+                className={`h-2 w-2 shrink-0 ${
                   activeRun ? 'bg-accent animate-ping' : 'bg-status-success'
                 }`}
               />
@@ -105,7 +105,7 @@ export default function Layout() {
                 <Activity className="h-3 w-3 text-status-success" />
                 <span>api:</span>
               </span>
-              <span className="text-status-success font-semibold">
+              <span className={health?.status === 'healthy' ? 'text-status-success font-semibold' : 'text-status-warning font-semibold'}>
                 {health?.status === 'healthy' ? 'online' : 'checking...'}
               </span>
             </div>
@@ -119,6 +119,15 @@ export default function Layout() {
               >
                 {health?.docker_available ? 'docker cgroup' : 'host fallback'}
               </span>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border pt-1.5 mt-1">
+              <span className="text-ink-tertiary">v1.0.0</span>
+              {health?.demo_mode && (
+                <span className="px-1.5 py-0.5 bg-status-warning text-white text-[9px] font-bold uppercase tracking-wider">
+                  demo
+                </span>
+              )}
             </div>
           </div>
         </div>
