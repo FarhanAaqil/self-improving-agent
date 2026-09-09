@@ -192,13 +192,33 @@ export default function NewRun() {
   return (
     <div className="space-y-8">
       {/* Page Header */}
-      <div className="border-b border-border pb-4">
-        <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
-          new run
-        </h1>
-        <p className="text-sm text-ink-secondary mt-1 font-sans">
-          Interrogate and synthesize code in a locked-down container sandbox with automated critique.
-        </p>
+      <div className="border-b border-border pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="relative shrink-0 h-10 w-10 bg-[#10241C] border border-accent/40 flex items-center justify-center shadow-xs">
+            <img src="/logo-square.jpg" alt="CODE_AGENT" className="h-9 w-9 object-cover" />
+            <span className="absolute top-0 right-0 h-1.5 w-1.5 bg-accent" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
+                new run
+              </h1>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 bg-surface-sunken border border-border text-ink-tertiary">
+                AUTONOMOUS V1.0
+              </span>
+            </div>
+            <p className="text-xs text-ink-secondary mt-0.5 font-sans">
+              Interrogate and synthesize code in a locked-down container sandbox with automated critique.
+            </p>
+          </div>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-2 font-mono text-[11px] text-ink-tertiary">
+          <span className="px-2 py-1 bg-surface border border-border text-ink-secondary flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 bg-status-success" />
+            cgroup: isolated
+          </span>
+        </div>
       </div>
 
       {/* API Offline Warning */}

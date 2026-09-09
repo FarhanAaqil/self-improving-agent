@@ -1,14 +1,36 @@
 export default function SecurityAbout() {
   return (
     <article className="max-w-[700px] mx-auto space-y-8 py-4 font-sans text-ink leading-relaxed">
-      {/* Title & Introduction */}
-      <header className="space-y-2 border-b border-border pb-4">
-        <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
-          Security Architecture & Threat Model
-        </h1>
-        <p className="text-sm text-ink-secondary leading-normal">
-          Technical specifications of container isolation, host sandbox boundaries, and architectural limitations.
-        </p>
+      {/* Title & Introduction with Official Security Seal */}
+      <header className="border-b border-border pb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 bg-surface border border-border p-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-accent/10 border border-accent/30 text-accent font-mono text-[10px] uppercase font-bold tracking-wider">
+                AST & CGROUP COMPLIANCE
+              </span>
+              <span className="px-2 py-0.5 bg-cyan/10 border border-cyan/30 text-cyan font-mono text-[10px] uppercase font-bold tracking-wider">
+                VERIFIED SANDBOX
+              </span>
+            </div>
+            <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
+              Security Architecture & Threat Model
+            </h1>
+            <p className="text-xs text-ink-secondary leading-normal max-w-lg font-sans">
+              Technical specifications of container isolation, host sandbox boundaries, static AST verification heuristics, and execution constraints.
+            </p>
+          </div>
+          <div className="relative shrink-0 border border-border bg-[#10241C] p-1 self-center sm:self-auto">
+            <img
+              src="/security-seal.jpg"
+              alt="CODE_AGENT Security Badge"
+              className="h-20 w-20 object-cover"
+            />
+            <div className="absolute bottom-0 inset-x-0 bg-[#10241C]/90 text-[8px] font-mono text-center text-cyan border-t border-cyan/40 py-0.5 tracking-wider uppercase font-semibold">
+              SEAL // CGROUP
+            </div>
+          </div>
+        </div>
       </header>
 
       {/* Section 1: Core Premise */}

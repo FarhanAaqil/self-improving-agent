@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <!-- Dark Forest Charcoal Base Frame -->
+  <rect width="128" height="128" fill="#10241C"/>
+  <rect x="2" y="2" width="124" height="124" stroke="#1E3E32" stroke-width="2" fill="none"/>
+  
+  <!-- Corner Technical Markers -->
+  <path d="M4 14 V4 H14" stroke="#FF5A1F" stroke-width="2" fill="none"/>
+  <path d="M124 14 V4 H114" stroke="#FF5A1F" stroke-width="2" fill="none"/>
+  <path d="M4 114 V124 H14" stroke="#FF5A1F" stroke-width="2" fill="none"/>
+  <path d="M124 114 V124 H114" stroke="#FF5A1F" stroke-width="2" fill="none"/>
+
+  <!-- Outer Hexagonal Sandbox Barrier -->
+  <path d="M64 12 L112 36 V92 L64 116 L16 92 V36 Z" 
+        stroke="#FF5A1F" stroke-width="4" stroke-linejoin="miter" fill="#142E25"/>
+        
+  <!-- Secondary Cyan Security Ring -->
+  <path d="M64 22 L102 42 V86 L64 106 L26 86 V42 Z" 
+        stroke="#0E7C86" stroke-width="2" stroke-linejoin="miter" stroke-dasharray="4 2" fill="none" opacity="0.85"/>
+
+  <!-- Core Hexagon Background Fill -->
+  <path d="M64 28 L94 45 V83 L64 100 L34 83 V45 Z" fill="#10241C" stroke="#1B4436" stroke-width="1.5"/>
+
+  <!-- Recursive Self-Improvement Loop Track -->
+  <path d="M44 68 C36 50 56 42 66 52 C72 58 78 68 88 56" 
+        stroke="#0E7C86" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+
+  <!-- Terminal Prompt Chevron '>' -->
+  <path d="M42 50 L56 64 L42 78" 
+        stroke="#FF5A1F" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+
+  <!-- Terminal Underscore '_' -->
+  <line x1="62" y1="78" x2="84" y2="78" stroke="#FF5A1F" stroke-width="6" stroke-linecap="square"/>
+
+  <!-- Ascending Self-Improvement Vector Arrow -->
+  <path d="M66 66 L86 42" stroke="#22D3EE" stroke-width="4" stroke-linecap="square"/>
+  <polygon points="78,38 92,40 88,54" fill="#22D3EE"/>
+</svg>

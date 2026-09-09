@@ -6,7 +6,6 @@ import {
   ChevronRight,
   ExternalLink,
   Filter,
-  History,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -73,14 +72,24 @@ export default function RunHistory() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h1 className="text-2xl font-mono font-bold tracking-tight text-ink flex items-center gap-2.5">
-            <History className="h-5 w-5 text-accent" />
-            <span>run history</span>
-          </h1>
-          <p className="text-sm text-ink-secondary mt-1 font-sans">
-            Audit ledger of synthesized programs, sandbox test tracebacks, and repair sessions.
-          </p>
+        <div className="flex items-start gap-3.5">
+          <div className="relative shrink-0 h-10 w-10 bg-[#10241C] border border-accent/40 flex items-center justify-center shadow-xs">
+            <img src="/logo-square.jpg" alt="CODE_AGENT" className="h-9 w-9 object-cover" />
+            <span className="absolute top-0 right-0 h-1.5 w-1.5 bg-accent" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
+                run history
+              </h1>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 bg-surface-sunken border border-border text-ink-tertiary">
+                AUDIT LEDGER
+              </span>
+            </div>
+            <p className="text-xs text-ink-secondary mt-0.5 font-sans">
+              Audit ledger of synthesized programs, sandbox test tracebacks, and repair sessions.
+            </p>
+          </div>
         </div>
 
         <button
@@ -134,9 +143,9 @@ export default function RunHistory() {
               key={item.id}
               type="button"
               onClick={() => setStatusFilter(item.id)}
-              className={`px-2.5 py-1 text-xs border transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1 text-xs font-mono border transition-colors cursor-pointer ${
                 statusFilter === item.id
-                  ? 'border-accent text-accent font-bold bg-accent-subtle/50'
+                  ? 'bg-ink text-surface border-ink font-bold'
                   : 'border-border text-ink-secondary hover:text-ink hover:bg-surface-sunken'
               }`}
             >
@@ -173,15 +182,18 @@ export default function RunHistory() {
             <span>failed to load run history: {error instanceof Error ? error.message : 'network error'}</span>
           </div>
         ) : paginatedRuns.length === 0 ? (
-          <div className="p-12 text-center text-xs text-ink-secondary space-y-2 font-mono">
-            <History className="h-8 w-8 text-border mx-auto mb-2" />
+          <div className="p-12 text-center text-xs text-ink-secondary space-y-3 font-mono">
+            <div className="relative h-12 w-12 bg-[#10241C] border border-border mx-auto flex items-center justify-center p-1 shadow-xs">
+              <img src="/logo-square.jpg" alt="No runs" className="h-10 w-10 object-cover opacity-60" />
+              <span className="absolute top-0 right-0 h-1.5 w-1.5 bg-accent/60" />
+            </div>
             <div className="font-bold text-ink">
               {searchQuery || statusFilter !== 'all' ? 'no matching runs' : 'no execution runs recorded'}
             </div>
-            <div className="text-ink-tertiary font-sans text-sm">
+            <div className="text-ink-tertiary font-sans text-sm max-w-sm mx-auto">
               {searchQuery || statusFilter !== 'all'
                 ? 'Try adjusting your filters or search query.'
-                : 'Submit a new task to generate solutions.'}
+                : 'Submit a new task to synthesize solutions and audit in sandbox.'}
             </div>
           </div>
         ) : (
@@ -200,7 +212,6 @@ export default function RunHistory() {
               </thead>
               <tbody className="divide-y divide-border">
                 {paginatedRuns.map((run, idx) => {
-                  // Safely handle missing attempts — list endpoint may omit them on older backends
                   const attempts = run.attempts ?? []
                   const passingAttempt = attempts.find((a) => a.success)
                   const lastAttempt = attempts[attempts.length - 1]
