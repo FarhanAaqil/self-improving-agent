@@ -1,4 +1,8 @@
-# 🧠 Self-Improving Code Agent
+<p align="center">
+  <img src="assets/brand-banner.jpg" alt="CODE_AGENT: Verification Ledger Banner" width="100%" />
+</p>
+
+# 🧠 CODE_AGENT — Self-Improving Code Agent
 
 > A sandboxed, self-repairing autonomous coding system that executes untrusted Python in isolated Docker containers, critiques failure tracebacks to repair bugs, learns negative patterns via ChromaDB vector memory, and audits code quality through multi-agent review.
 

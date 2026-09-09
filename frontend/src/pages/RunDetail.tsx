@@ -7,7 +7,6 @@ import {
   Download,
   ExternalLink,
   GitPullRequest,
-  Layers,
   Loader2,
   RefreshCw,
   Scale,
@@ -267,8 +266,9 @@ export default function RunDetail() {
       <div className="bg-surface border border-border p-5 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 bg-surface-sunken border border-border flex items-center justify-center text-accent">
-              <Layers className="h-4 w-4" />
+            <div className="relative shrink-0 h-10 w-10 bg-[#10241C] border border-accent/40 flex items-center justify-center shadow-xs">
+              <img src="/logo-square.jpg" alt="CODE_AGENT" className="h-9 w-9 object-cover" />
+              <span className="absolute top-0 right-0 h-1.5 w-1.5 bg-accent" />
             </div>
             <div>
               <div className="flex items-center gap-2">

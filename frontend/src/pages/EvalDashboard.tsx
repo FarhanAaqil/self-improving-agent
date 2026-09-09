@@ -2,7 +2,6 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   AlertCircle,
-  BarChart3,
   CheckCircle2,
   Loader2,
   RefreshCw,
@@ -75,14 +74,24 @@ export default function EvalDashboard() {
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h1 className="text-2xl font-mono font-bold tracking-tight text-ink flex items-center gap-2.5">
-            <BarChart3 className="h-5 w-5 text-accent" />
-            <span>eval dashboard</span>
-          </h1>
-          <p className="text-sm text-ink-secondary mt-1 font-sans">
-            HumanEval benchmark results, pass@k calibration, and automated repair gains.
-          </p>
+        <div className="flex items-start gap-3.5">
+          <div className="relative shrink-0 h-10 w-10 bg-[#10241C] border border-accent/40 flex items-center justify-center shadow-xs">
+            <img src="/logo-square.jpg" alt="CODE_AGENT" className="h-9 w-9 object-cover" />
+            <span className="absolute top-0 right-0 h-1.5 w-1.5 bg-accent" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
+                eval dashboard
+              </h1>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 bg-surface-sunken border border-border text-ink-tertiary">
+                BENCHMARK SUITE
+              </span>
+            </div>
+            <p className="text-xs text-ink-secondary mt-0.5 font-sans">
+              HumanEval benchmark results, pass@k calibration, and automated repair gains.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto">
