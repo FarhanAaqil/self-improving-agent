@@ -1,4 +1,8 @@
-# 🧠 Self-Improving Code Agent
+<p align="center">
+  <img src="assets/brand-banner.jpg" alt="CODE_AGENT: Verification Ledger Banner" width="100%" />
+</p>
+
+# 🧠 CODE_AGENT — Self-Improving Code Agent & Verification Ledger
 
 > A sandboxed, self-repairing autonomous coding system that executes untrusted Python in isolated Docker containers, critiques failure tracebacks to repair bugs, learns negative patterns via ChromaDB vector memory, and audits code quality through multi-agent review.
 
@@ -13,9 +17,73 @@
 
 ---
 
+## 📸 Product Tour & Demos
+
+Explore the core workflows and interfaces of the CODE_AGENT verification ledger.
+
+### 1. Task Synthesis & Live Viewfinder (`/`)
+Interactive developer workspace where users submit task specifications with prompt quick-picks, model selection (`llama-3.3-70b-versatile`), and an active pipeline viewfinder.
+
+<p align="center">
+  <img src="assets/screenshots/01-new-run.png" alt="New Run Workspace" width="100%" />
+</p>
+
+---
+
+### 2. Autonomous Multi-Attempt Execution & Live Stepper
+Watch the multi-agent critique loop synthesize code, mount it into an ephemeral cgroup container, capture tracebacks upon failure, and automatically repair errors in real time.
+
+<p align="center">
+  <img src="assets/screenshots/02-live-execution.png" alt="Live Execution Stepper" width="100%" />
+</p>
+
+---
+
+### 3. Audit Ledger & Historical Runs (`/history`)
+Comprehensive audit ledger of all generated programs with status filter pills, search bar, execution pass/fail metrics, quality ratings (out of 10), attempt counters, and pagination.
+
+<p align="center">
+  <img src="assets/screenshots/03-run-history.png" alt="Audit Ledger and Run History" width="100%" />
+</p>
+
+---
+
+### 4. Deep Run Inspection, Quality Audit & Diff View (`/runs/{run_id}`)
+Examine individual attempts with stdout/stderr traces, AST security audit results, algorithmic complexity profiling, unified code diffs, one-click code download, and automated GitHub Pull Request creation.
+
+<p align="center">
+  <img src="assets/screenshots/04-run-detail.png" alt="Deep Run Inspection" width="100%" />
+</p>
+
+---
+
+### 5. HumanEval Benchmark Dashboard (`/eval`)
+Live evaluation telemetry showing pass@1 baseline accuracy (88.0%) alongside pass@5 autonomous repair accuracy (96.0%) across HumanEval benchmark suites.
+
+<p align="center">
+  <img src="assets/screenshots/05-eval-dashboard.png" alt="Evaluation Dashboard" width="100%" />
+</p>
+
+---
+
+### 6. Security Architecture & Threat Model (`/security`)
+Official cryptographic sandbox specification detailing kernel cgroups, network disconnection (`--network none`), read-only root filesystems, and static AST security audits.
+
+<p align="center">
+  <img src="assets/screenshots/06-security-threat-model.png" alt="Security Architecture and Threat Model" width="100%" />
+</p>
+
+---
+
 ## 1. Problem Statement
 
-Most AI code generators are single-shot and unvalidated: they emit code and hope for the best, with zero execution feedback. When developers run generated code locally, they face two major problems: hallucinated bugs that require tedious manual troubleshooting, and severe security hazards when executing untrusted AI output directly on the host machine. The **Self-Improving Code Agent** closes this loop. It executes code inside an isolated, unprivileged Docker sandbox, captures runtime exceptions, and feeds structured tracebacks back into an iterative repair loop. When runs terminally fail, the agent memorizes the failure signature in a vector database so future tasks avoid repeating identical mistakes.
+Most AI code generators are single-shot and unvalidated: they emit code and hope for the best, with zero execution feedback. When developers run generated code locally, they face two major problems: hallucinated bugs that require tedious manual troubleshooting, and severe security hazards when executing untrusted AI output directly on the host machine. 
+
+The **Self-Improving Code Agent** closes this loop:
+1. **Quarantined Execution:** It executes untrusted model code inside an isolated, unprivileged Docker sandbox with zero network access and strict memory caps.
+2. **Iterative Critique & Repair:** When runtime exceptions occur, structured tracebacks are captured and passed back to an LLM critique agent to fix the code automatically.
+3. **Persistent Negative Memory:** When runs terminally fail, the failure pattern and traceback signature are indexed into ChromaDB vector memory, preventing identical mistakes in future tasks.
+4. **Autonomous Quality Gates:** Passing code is subjected to multi-agent critique — static AST security review, Big-O algorithmic profiling, unit test synthesis, and docstring formatting.
 
 ---
 
@@ -78,10 +146,10 @@ We benchmark the self-repairing agent against a canonical 50-problem subset of O
 <!-- BENCHMARK_TABLE_START -->
 | Metric | Self-Improving Agent | Baseline (Zero-Shot) |
 |---|---|---|
-| pass@1 | 88.0% | 68.0% (single-pass) |
-| pass@5 | 96.0% | 68.0% (no repair) |
-| Avg repair attempts | 1.18 | 1.0 (no repair) |
-| Avg latency | 62.2 ms | ~50 ms |
+| **pass@1** | **88.0%** | 68.0% (single-pass) |
+| **pass@5** | **96.0%** | 68.0% (no repair) |
+| **Avg repair attempts** | 1.18 | 1.0 (no repair) |
+| **Avg latency** | 62.2 ms | ~50 ms |
 <!-- BENCHMARK_TABLE_END -->
 
 *Note: The table above is automatically populated from committed JSON results in `results/humaneval_2026-09-12.json` via `scripts/generate_readme_table.py` — it is never hand-typed.*

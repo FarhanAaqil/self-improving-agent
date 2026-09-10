@@ -242,11 +242,31 @@ def get_run_with_attempts(run_id: str, db_path: str = DB_PATH) -> dict[str, Any]
 
 def list_runs(limit: int = 50, db_path: str = DB_PATH) -> list[dict[str, Any]]:
     with get_connection(db_path) as conn:
-        rows = conn.execute(
+        run_rows = conn.execute(
             "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
-        return [dict(r) for r in rows]
+        runs = [dict(r) for r in run_rows]
+
+        if not runs:
+            return runs
+
+        run_ids = [r["run_id"] for r in runs]
+        placeholders = ",".join("?" * len(run_ids))
+        attempt_rows = conn.execute(
+            f"SELECT * FROM attempts WHERE run_id IN ({placeholders}) ORDER BY run_id, attempt_number ASC",
+            run_ids,
+        ).fetchall()
+
+        # Group attempts by run_id
+        attempts_by_run: dict[str, list] = {r["run_id"]: [] for r in runs}
+        for row in attempt_rows:
+            attempts_by_run[row["run_id"]].append(dict(row))
+
+        for run in runs:
+            run["attempts"] = attempts_by_run.get(run["run_id"], [])
+
+        return runs
 
 
 def insert_eval_run(

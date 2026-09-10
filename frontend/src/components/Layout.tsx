@@ -5,10 +5,10 @@ import {
   History,
   PlayCircle,
   ShieldCheck,
-  Terminal,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { getHealth, listRuns } from '../api/client'
+import BrandLogo from './BrandLogo'
 
 const NAV_ITEMS = [
   { to: '/', label: 'new run', icon: PlayCircle },
@@ -44,15 +44,9 @@ export default function Layout() {
           {/* Logo / Header */}
           <Link
             to="/"
-            className="flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-surface-sunken/50 transition-colors"
+            className="flex items-center px-4 py-3.5 border-b border-border hover:bg-surface-sunken/60 transition-colors"
           >
-            <div className="h-7 w-7 bg-accent flex items-center justify-center text-white font-mono font-bold text-xs">
-              <Terminal className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="font-mono font-bold text-xs text-ink tracking-tight">CODE_AGENT</div>
-              <div className="text-[11px] text-ink-secondary font-sans">verification ledger</div>
-            </div>
+            <BrandLogo variant="full" size="md" />
           </Link>
 
           {/* Navigation Items (Monospace, left-edge accent bar) */}
@@ -86,7 +80,7 @@ export default function Layout() {
           <div className="py-1.5 px-2 bg-surface-sunken border border-border">
             <div className="flex items-center gap-2">
               <span
-                className={`h-2 w-2 rounded-full shrink-0 ${
+                className={`h-2 w-2 shrink-0 ${
                   activeRun ? 'bg-accent animate-ping' : 'bg-status-success'
                 }`}
               />
@@ -105,7 +99,7 @@ export default function Layout() {
                 <Activity className="h-3 w-3 text-status-success" />
                 <span>api:</span>
               </span>
-              <span className="text-status-success font-semibold">
+              <span className={health?.status === 'healthy' ? 'text-status-success font-semibold' : 'text-status-warning font-semibold'}>
                 {health?.status === 'healthy' ? 'online' : 'checking...'}
               </span>
             </div>
@@ -119,6 +113,15 @@ export default function Layout() {
               >
                 {health?.docker_available ? 'docker cgroup' : 'host fallback'}
               </span>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border pt-1.5 mt-1">
+              <span className="text-ink-tertiary">v1.0.0</span>
+              {health?.demo_mode && (
+                <span className="px-1.5 py-0.5 bg-status-warning text-white text-[9px] font-bold uppercase tracking-wider">
+                  demo
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -138,8 +141,9 @@ export default function Layout() {
             </span>
           </div>
           <div className="flex items-center gap-3 font-mono text-[11px] text-ink-secondary">
-            <span className="px-2 py-0.5 bg-surface-sunken border border-border text-ink">
-              calibration mode
+            <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface-sunken border border-border text-ink">
+              <img src="/logo.svg" alt="" className="h-3.5 w-3.5 inline-block" />
+              <span>calibration mode</span>
             </span>
           </div>
         </header>
