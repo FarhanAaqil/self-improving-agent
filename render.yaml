@@ -27,6 +27,6 @@ services:
       - key: GITHUB_TOKEN
         sync: false
       - key: ALLOW_UNSAFE_HOST_SUBPROCESS
-        value: "false"
+        value: "true"
       - key: API_KEY
         sync: false
