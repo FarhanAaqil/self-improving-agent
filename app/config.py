@@ -25,10 +25,10 @@ IS_DEV = APP_ENV in ("development", "dev", "local", "test")
 
 # ── LLM ────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL = os.getenv("MODEL", "llama-3.3-70b-versatile")
+MODEL = os.getenv("MODEL", "qwen/qwen3.8-27b")
 AVAILABLE_MODELS = _csv(
     "AVAILABLE_MODELS",
-    "llama-3.3-70b-versatile,llama-3.1-8b-instant,openai/gpt-oss-120b,qwen/qwen3.8-27b",
+    "qwen/qwen3.8-27b,openai/gpt-oss-120b,openai/gpt-oss-20b",
 )
 if MODEL not in AVAILABLE_MODELS:
     AVAILABLE_MODELS.insert(0, MODEL)

@@ -1,16 +1,4 @@
-from groq import Groq
-
-from app.config import GROQ_API_KEY, MODEL
-
-_default_client: Groq | None = None
-
-
-def _get_client() -> Groq:
-    global _default_client
-    if _default_client is None:
-        _default_client = Groq(api_key=GROQ_API_KEY)
-    return _default_client
-
+from app import llm
 
 DOCS_SYSTEM_PROMPT = """You are a senior Python software engineer specializing in clean code and documentation.
 Your job is to enrich working Python code with clean, professional PEP 257 docstrings and concise comments.
@@ -29,9 +17,6 @@ def document_code(
     model_override: str | None = None,
 ) -> str:
     """Rewrite working Python code with clean PEP 257 docstrings without changing logic."""
-    client = client_override or _get_client()
-    model = model_override or MODEL
-
     prompt = f"""Task:
 {task}
 
@@ -40,27 +25,18 @@ Working Python code to document:
 
 Return the documented Python code."""
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+    raw = llm.chat(
+        [
             {"role": "system", "content": DOCS_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
+        model=model_override,
         temperature=0.1,
         max_tokens=2048,
+        client=client_override,
     )
-
-    raw = response.choices[0].message.content.strip()
     return _clean_code(raw)
 
 
 def _clean_code(raw: str) -> str:
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].startswith("```"):
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    return text
+    return llm.clean_code(raw)
