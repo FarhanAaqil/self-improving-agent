@@ -70,6 +70,29 @@ export interface RunOut {
   attempts: AttemptOut[]
 }
 
+export interface RunSummary {
+  run_id: string
+  task_description: string
+  created_at?: string | null
+  final_status: string
+  total_attempts: number
+  model_name?: string | null
+  passed_on_attempt?: number | null
+  quality_score?: number | null
+  total_latency_ms?: number | null
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  finished_at?: string | null
+}
+
+export interface RunPage {
+  items: RunSummary[]
+  total: number
+  page: number
+  page_size: number
+  status_counts: Record<string, number>
+}
+
 export interface EvalResultOut {
   eval_id: string
   benchmark_name: string

@@ -11,7 +11,7 @@
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TS-61DAFB?style=flat&logo=react&logoColor=black)
 ![Docker](https://img.shields.io/badge/Sandbox-Docker-2496ED?style=flat&logo=docker&logoColor=white)
-![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Llama%203.3%2070B-F55036?style=flat)
+![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Qwen3%20%2F%20gpt--oss-F55036?style=flat)
 ![ChromaDB](https://img.shields.io/badge/Memory-ChromaDB-orange?style=flat)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat)
 
@@ -22,7 +22,7 @@
 Explore the core workflows and interfaces of the CODE_AGENT verification ledger.
 
 ### 1. Task Synthesis & Live Viewfinder (`/`)
-Interactive developer workspace where users submit task specifications with prompt quick-picks, model selection (`llama-3.3-70b-versatile`), and an active pipeline viewfinder.
+Interactive developer workspace where users submit task specifications with prompt quick-picks, model selection (served live from `/models`), and an active pipeline viewfinder.
 
 <p align="center">
   <img src="assets/screenshots/01-new-run.png" alt="New Run Workspace" width="100%" />
@@ -58,7 +58,7 @@ Examine individual attempts with stdout/stderr traces, AST security audit result
 ---
 
 ### 5. HumanEval Benchmark Dashboard (`/eval`)
-Live evaluation telemetry showing pass@1 baseline accuracy (88.0%) alongside pass@5 autonomous repair accuracy (96.0%) across HumanEval benchmark suites.
+Benchmark telemetry comparing a single-shot baseline with the repairing agent on official HumanEval, with confidence intervals.
 
 <p align="center">
   <img src="assets/screenshots/05-eval-dashboard.png" alt="Evaluation Dashboard" width="100%" />
@@ -122,54 +122,52 @@ The security perimeter is guarded by 8 real attacks in `tests/fixtures/adversari
 
 ```mermaid
 graph TD
-    A[User / Client Task] --> B[FastAPI Backend /generate-and-repair]
-    B --> C[Vector Memory Lookup<br/>ChromaDB all-MiniLM-L6-v2]
-    C -->|Similarity >= 0.75| D[Generator Agent<br/>Llama 3.3 70B via Groq]
-    D --> E[Docker Execution Sandbox<br/>--network none, --read-only, 256MB]
-    
-    E -->|Runtime Error / Non-Zero Exit| F{Critique Agent}
-    F -->|Confidence < 0.3| G[Early Stop: Intractable Problem]
-    F -->|Confidence >= 0.3 & Attempts < Max| D
-    
-    E -->|Success Exit Code 0| H[Post-Success Review Pipeline]
-    H --> I[1. Test Agent: Unit Test Synthesis]
-    H --> J[2. Performance Agent: Big-O Profiling]
-    H --> K[3. CodeSecurityAudit: Static AST Review]
-    H --> L[4. Documentation Agent: PEP 257 Docstrings]
-    H --> M[5. Quality Metrics: McCabe Complexity]
-    
-    H --> N[Persist Attempt & Quality Report in SQLite]
-    G --> O[Store Failure & Traceback in ChromaDB]
-    N --> P[React SPA Dashboard + Optional GitHub PR]
+    A[Task] --> B[POST /runs → background job]
+    B --> C[Recall memory<br/>failures + lessons, cosine ≥ 0.75]
+    C --> D[Test agent writes spec tests<br/>from the task, before any code]
+    D --> E[Generator writes code<br/>to satisfy the spec tests]
+    E --> F[Verification harness in Docker<br/>runs code + tests, traces coverage]
+    F -->|tests fail| G[Diagnose: root cause, fix plan,<br/>blame code or tests, retry confidence]
+    G -->|confidence < 0.3| H[Early stop + remember failure]
+    G -->|tests at fault, once| D
+    G -->|repair| E
+    F -->|all tests pass| I[Review: performance, LLM security audit,<br/>bandit, radon, critique]
+    I --> J[Documentation agent<br/>kept only if it still passes]
+    J --> K[Quality score from measured data]
+    K --> L[Remember the lesson that fixed it]
+    B -.every step.-> M[(run_events)] -.SSE.-> N[Live UI]
 ```
+
+**What counts as success:** every spec test passes inside the sandbox. A clean exit code is not enough. The repair prompt contains the previous code, the failing tests and the diagnosis, so the model fixes what it can actually see.
 
 ---
 
 ## 4. Evaluation & Benchmark Results
 
-We benchmark the self-repairing agent against a canonical 50-problem subset of OpenAI's HumanEval evaluation harness.
+`python -m eval.benchmark` runs the **official HumanEval** problems (all 164 are vendored in `eval/data/`, MIT licensed) with their original `check()` tests, inside the Docker sandbox.
 
-> **Deliberate Scope Decision:** Evaluating across 50 representative problems was selected deliberately over the full 164 set to guarantee high statistical confidence for iterative repair dynamics while executing fully within free-tier API rate limits and practical CI time budgets.
+- **Baseline:** one single-shot completion per problem, no feedback.
+- **Agent pass@1:** the agent's first attempt (an independent sample).
+- **Agent solve@k:** solved within k attempts with repair.
+- **No test leakage:** after a failure the agent only learns the exception type, never the assertion source or expected values.
+- **Honest error bars:** 95% Wilson confidence intervals. Results that did not run in the sandbox are refused.
 
 <!-- BENCHMARK_TABLE_START -->
-| Metric | Self-Improving Agent | Baseline (Zero-Shot) |
-|---|---|---|
-| **pass@1** | **88.0%** | 68.0% (single-pass) |
-| **pass@5** | **96.0%** | 68.0% (no repair) |
-| **Avg repair attempts** | 1.18 | 1.0 (no repair) |
-| **Avg latency** | 62.2 ms | ~50 ms |
+_No official result committed yet. Run `python -m eval.benchmark --problems 40` and then `python scripts/generate_readme_table.py`._
 <!-- BENCHMARK_TABLE_END -->
 
-*Note: The table above is automatically populated from committed JSON results in `results/humaneval_2026-09-12.json` via `scripts/generate_readme_table.py` — it is never hand-typed.*
+*The table is generated from committed JSON in `results/` by `scripts/generate_readme_table.py`; it is never hand-typed. Older numbers from the simplified 50-problem set are archived in `results/legacy/` with an explanation of why they are not comparable.*
 
 ---
 
 ## 5. Vector Memory (ChromaDB)
 
-When a generation task exhausts all attempts or is marked unresolvable, `app/memory.py` records `(task_prompt, failed_code, error_traceback)` into a persistent ChromaDB vector store.
-- **Negative Few-Shot Context:** When generating solutions for a new task, vector memory retrieves semantically similar past failures.
-- **0.75 Cosine Threshold:** Matches are strictly filtered against `MEMORY_SIMILARITY_THRESHOLD = 0.75`. Lower thresholds introduce irrelevant false positives that pollute prompt tokens.
-- **Prompt Injection:** Qualified memories are injected directly into the LLM system instructions under `### Past Similar Failures to Avoid`.
+`app/memory.py` keeps two kinds of memories, embedded with Chroma's bundled ONNX MiniLM model (no torch needed):
+- **Failures:** tasks that never passed, with the code that was tried and its error signature.
+- **Lessons:** tasks that failed first and then passed, with the error and the fix that worked.
+- **Recall:** before a run starts, similar memories above a 0.75 cosine threshold are recalled, shown in the UI, and given to the generator.
+- **Treated as data:** memories come from user input, so they are passed as fenced, size-capped reference data in a user message, never as system instructions.
+- **Manageable:** browse, search, pin and delete memories through `/memory`.
 
 ---
 
@@ -227,12 +225,17 @@ Interactive OpenAPI documentation and Swagger UI are hosted at `http://localhost
 | `GET` | `/health` | Health telemetry, Docker engine availability, and demo mode flags |
 | `POST` | `/generate` | Generate initial code without execution |
 | `POST` | `/execute/{run_id}` | Dispatch a specific run's code into the Docker sandbox |
-| `POST` | `/generate-and-repair` | Full iterative loop: vector lookup, generate, execute, critique, repair |
-| `GET` | `/runs` | List paginated historical runs |
-| `GET` | `/runs/{run_id}` | Full attempt history, latency, critique reasoning, and quality metrics |
+| `POST` | `/generate-and-repair` | Full loop, synchronous (blocks until done) |
+| `POST` | `/runs` | Full loop in the background; returns `run_id` immediately (202) |
+| `GET` | `/runs/{run_id}/events` | Server-sent events: every step of a run, live, resumable with `Last-Event-ID` |
+| `GET` | `/runs` | Paginated run summaries (`page`, `page_size`, `q`, `status`) |
+| `GET` | `/runs/{run_id}` | Full attempt history, spec tests, diagnosis, recalled memories, quality report |
+| `GET` | `/memory`, `/memory/search`, `/memory/stats` | Browse and search what the agent has learned |
+| `DELETE` | `/memory/{id}` | Forget a memory (`POST /memory/{id}/pin` to pin one) |
+| `GET` | `/models`, `/sandbox/config` | Available models and the exact sandbox command in use |
 | `POST` | `/runs/{run_id}/pr` | Automated GitHub Pull Request opening with verified solution |
-| `GET` | `/eval/latest` | Retrieve latest committed benchmark results |
-| `POST` | `/eval/run` | Trigger an evaluation benchmark run |
+| `GET` | `/eval/latest`, `/eval/history` | Latest and past benchmark results |
+| `POST` | `/eval/run` | Start a benchmark run (`GET /eval/status/{id}` for progress) |
 
 ---
 

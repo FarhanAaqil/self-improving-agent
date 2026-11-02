@@ -12,6 +12,7 @@ import type {
   HealthResponse,
   PrResponse,
   RunOut,
+  RunPage,
 } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -113,14 +114,18 @@ export function generateAndRepair(req: GenerateAndRepairRequest): Promise<RunOut
   })
 }
 
+export function startRun(req: GenerateAndRepairRequest): Promise<{ run_id: string; status: string; events_url: string }> {
+  return request('/runs', { method: 'POST', body: JSON.stringify(req) })
+}
+
 // ── Endpoint 4: GET /runs/{run_id} & GET /runs ──
 
 export function getRun(runId: string): Promise<RunOut> {
   return request<RunOut>(`/runs/${encodeURIComponent(runId)}`)
 }
 
-export function listRuns(limit = 50): Promise<RunOut[]> {
-  return request<RunOut[]>(`/runs?limit=${limit}`)
+export function listRuns(pageSize = 20, page = 1): Promise<RunPage> {
+  return request<RunPage>(`/runs?page=${page}&page_size=${pageSize}`)
 }
 
 // ── Endpoint 5: GET /eval/latest ──

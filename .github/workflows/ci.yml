@@ -145,10 +145,10 @@ jobs:
         if: env.GROQ_API_KEY != ''
         run: pytest -m integration -v
 
-      - name: Full eval run (50 HumanEval problems)
+      - name: Benchmark run (40 official HumanEval problems)
         if: env.GROQ_API_KEY != ''
         run: |
-          python eval/humaneval_runner.py --problems 50
+          python -m eval.benchmark --problems 40 --attempts 3
           python scripts/generate_readme_table.py
 
       - name: Commit updated benchmark results

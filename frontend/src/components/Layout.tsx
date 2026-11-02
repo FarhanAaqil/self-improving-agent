@@ -30,13 +30,13 @@ export default function Layout() {
   })
 
   // Check for any actively running jobs for the persistent run ticker
-  const { data: runs = [] } = useQuery({
+  const { data: tickerPage } = useQuery({
     queryKey: ['runs-ticker'],
     queryFn: () => listRuns(5),
     refetchInterval: 3000,
   })
 
-  const activeRun = runs.find((r) => r.final_status === 'running')
+  const activeRun = tickerPage?.items.find((r) => ['running', 'queued'].includes(r.final_status))
 
   const queryClient = useQueryClient()
   const [hasKey, setHasKey] = useState(() => Boolean(getStoredApiKey()))

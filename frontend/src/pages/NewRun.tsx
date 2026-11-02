@@ -9,7 +9,7 @@ import {
   WifiOff,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { generateAndRepair, getHealth, getRun } from '../api/client'
+import { getHealth, getRun, startRun } from '../api/client'
 import { isTerminalStatus, type RunOut } from '../api/types'
 import AttemptCard from '../components/AttemptCard'
 import PipelineStepper, { type PipelineStep } from '../components/PipelineStepper'
@@ -44,7 +44,7 @@ const TEMPLATE_PROMPTS = [
 
 export default function NewRun() {
   const [taskDescription, setTaskDescription] = useState('')
-  const [model, setModel] = useState('llama-3.3-70b-versatile')
+  const [model, setModel] = useState('')
   const [maxAttempts, setMaxAttempts] = useState(3)
   const [skipAgents, setSkipAgents] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -73,11 +73,11 @@ export default function NewRun() {
   })
 
   // Mutation: triggers POST /generate-and-repair
-  const runMutation = useMutation<RunOut, Error, { task: string }>({
+  const runMutation = useMutation<{ run_id: string }, Error, { task: string }>({
     mutationFn: ({ task }) =>
-      generateAndRepair({
+      startRun({
         task_description: task,
-        model,
+        model: model || health?.default_model || null,
         max_attempts: maxAttempts,
         skip_agents: skipAgents,
       }),
@@ -107,8 +107,10 @@ export default function NewRun() {
     )
   }
 
-  const isExecuting = runMutation.isPending || (polledRun?.final_status === 'running')
-  const displayRun = polledRun || runMutation.data
+  const isExecuting =
+    runMutation.isPending ||
+    Boolean(activeRunId && (!polledRun || ['queued', 'running'].includes(polledRun.final_status)))
+  const displayRun = polledRun
   const latestAttempt = displayRun?.attempts[displayRun.attempts.length - 1]
   const isSuccess = displayRun?.final_status === 'success'
   const isComplete = isTerminalStatus(displayRun?.final_status)
@@ -315,7 +317,7 @@ export default function NewRun() {
               <div>
                 <label className="block text-ink font-bold mb-1">inference model</label>
                 <select
-                  value={model}
+                  value={model || health?.default_model || ''}
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full bg-surface-sunken border border-border p-2 text-ink font-mono focus:outline-none focus:border-accent"
                 >
