@@ -61,6 +61,12 @@ def test_eval_endpoints():
 
 
 def test_frontend_spa_serving():
+    import pytest
+
+    from app.main import _FRONTEND_DIST
+
+    if not (_FRONTEND_DIST / "index.html").exists():
+        pytest.skip("frontend/dist not built")
     # Root / serves React HTML
     resp = client.get("/")
     assert resp.status_code == 200
@@ -94,8 +100,8 @@ def test_static_file_path_traversal_blocked():
 def test_api_key_authentication(monkeypatch):
     from unittest.mock import patch
 
-    # When API_KEY is set in config, mutating endpoints require authentication
-    with patch("app.main.API_KEY", "secret-test-key"):
+    # When API_KEY is set in config, protected endpoints require authentication
+    with patch("app.config.API_KEY", "secret-test-key"):
         # Without key -> 401
         unauth_resp = client.post("/generate", json={"task_description": "hi"})
         assert unauth_resp.status_code == 401
@@ -139,3 +145,77 @@ def test_sandbox_fail_closed_when_docker_down():
         assert "Docker daemon is unavailable" in res["error"]
 
 
+
+
+def test_reads_require_key_when_configured():
+    from unittest.mock import patch
+
+    with patch("app.config.API_KEY", "secret-test-key"):
+        assert client.get("/runs").status_code == 401
+        assert client.get("/runs", headers={"X-API-Key": "secret-test-key"}).status_code == 200
+        # Health stays public so load balancers and the UI can probe it
+        assert client.get("/health").status_code == 200
+
+
+def test_production_without_key_fails_closed():
+    from unittest.mock import patch
+
+    with patch("app.config.API_KEY", None), patch("app.config.IS_DEV", False):
+        resp = client.post("/generate", json={"task_description": "hello world"})
+        assert resp.status_code == 503
+        assert client.get("/runs").status_code == 503
+
+
+def test_unknown_model_and_oversized_task_rejected():
+    assert client.post(
+        "/generate", json={"task_description": "hello world", "model": "gpt-who-knows"}
+    ).status_code == 422
+    assert client.post("/generate", json={"task_description": "x" * 5000}).status_code == 422
+
+
+def test_eval_subset_size_bounded():
+    assert client.post("/eval/run", json={"subset_size": -5}).status_code == 422
+    assert client.post("/eval/run", json={"subset_size": 10_000}).status_code == 422
+
+
+def test_code_override_disabled_by_default():
+    from app.db import insert_attempt, insert_run
+
+    insert_run("run_override", "task", final_status="generated", total_attempts=1)
+    insert_attempt(run_id="run_override", attempt_number=1, generated_code="print(1)", success=False)
+    resp = client.post("/execute/run_override", json={"code_override": "import os; os.system('id')"})
+    assert resp.status_code == 403
+
+
+def test_execute_unknown_attempt_is_404_and_numbers_never_repeat():
+    from unittest.mock import patch
+
+    from app.db import get_run_with_attempts, insert_attempt, insert_run
+
+    insert_run("run_exec", "task", final_status="generated", total_attempts=1)
+    insert_attempt(run_id="run_exec", attempt_number=1, generated_code="print(1)", success=False)
+
+    assert client.post("/execute/run_exec", json={"attempt_number": 7}).status_code == 404
+
+    ok = {"success": True, "output": "1", "error": "", "exit_code": 0, "latency_ms": 5, "sandboxed": True}
+    with patch("app.main.run_code", return_value=ok):
+        first = client.post("/execute/run_exec").json()
+        second = client.post("/execute/run_exec", json={"attempt_number": 1}).json()
+    assert (first["attempt_number"], second["attempt_number"]) == (2, 3)
+    numbers = [a["attempt_number"] for a in get_run_with_attempts("run_exec")["attempts"]]
+    assert numbers == [1, 2, 3]
+
+
+def test_rate_limiter_blocks_bursts():
+    import pytest
+    from fastapi import HTTPException
+
+    from app.security import RateLimiter
+
+    limiter = RateLimiter(per_minute=2)
+    limiter.check("client")
+    limiter.check("client")
+    with pytest.raises(HTTPException) as exc:
+        limiter.check("client")
+    assert exc.value.status_code == 429
+    limiter.check("someone-else")
