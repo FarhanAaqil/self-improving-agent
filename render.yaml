@@ -42,3 +42,9 @@ services:
         value: "false"
       - key: RATE_LIMIT_PER_MINUTE
         value: "10"
+      - key: DAILY_TOKEN_BUDGET
+        value: "200000"
+      - key: CERT_SIGNING_KEY
+        generateValue: true
+      - key: LOG_FORMAT
+        value: "json"
