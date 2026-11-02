@@ -90,3 +90,32 @@ def test_endpoint_post_run_pr():
         resp = client.post("/runs/run_dummy_123/pr")
         assert resp.status_code == 200
         assert resp.json()["status"] == "skipped"
+
+
+def test_pr_refuses_repos_outside_allowlist():
+    with patch("app.github_agent.IS_GITHUB_CONFIGURED", True):
+        for repo in ("someone/else", "a/b/../../user/repos", "not-a-repo"):
+            result = open_pull_request_for_run("run_x", repo=repo)
+            assert result["status"] == "error"
+
+
+def test_pr_refuses_failed_runs():
+    failed_run = {
+        "run_id": "run_bad",
+        "task_description": "x",
+        "final_status": "max_retries_exceeded",
+        "total_attempts": 1,
+        "attempts": [{"attempt_number": 1, "generated_code": "boom", "success": False}],
+    }
+    with patch("app.github_agent.IS_GITHUB_CONFIGURED", True), \
+         patch("app.github_agent.get_run_with_attempts", return_value=failed_run):
+        result = open_pull_request_for_run("run_bad")
+    assert result["status"] == "error"
+    assert "passed verification" in result["error"]
+
+
+def test_task_fence_survives_backticks():
+    from app.github_agent import _fence
+
+    fenced = _fence("before ``` injected ``` after")
+    assert fenced.startswith("````")

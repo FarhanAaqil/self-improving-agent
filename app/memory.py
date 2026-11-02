@@ -1,10 +1,7 @@
 # ── app/memory.py ───────────────────────────────────────────
 # Vector memory layer — ChromaDB.
-#
-# Audited: store_failure() and retrieve_similar_failures() exist
-# but were not wired into generator.py or the main repair loop.
-# Day 8 wires retrieve_similar_failures() into generator.py for prompt injection
-# and ensures terminal failures are saved to ChromaDB.
+# Terminal failures are stored here and recalled as fenced reference data
+# (never as instructions) when a similar task comes in.
 
 import os
 import uuid
@@ -17,9 +14,18 @@ from chromadb.utils import embedding_functions
 from app.config import (
     MEMORY_COLLECTION,
     MEMORY_DIR,
+    MEMORY_MAX_CHARS,
     MEMORY_SIMILARITY_THRESHOLD,
     MEMORY_TOP_K,
 )
+
+_FIELD_LIMITS = {"task": 400, "code": 1200, "error": 600}
+
+
+def _trim(text: str, limit: int) -> str:
+    text = (text or "").replace("</recalled_memory>", "")
+    return text if len(text) <= limit else text[:limit] + " …[trimmed]"
+
 
 _client: Any = None
 _embed_fn: Any = None
@@ -57,7 +63,10 @@ def store_failure(task: str, code: str, error: str, collection=None) -> str:
     """
     coll = _get_collection(collection)
     memory_id = str(uuid.uuid4())
-    document = f"TASK: {task}\nERROR: {error}"
+    task = _trim(task, _FIELD_LIMITS["task"])
+    code = _trim(code, _FIELD_LIMITS["code"])
+    error = _trim(error, _FIELD_LIMITS["error"])
+    document =f"TASK: {task}\nERROR: {error}"
 
     coll.add(
         ids=[memory_id],
@@ -131,14 +140,21 @@ def build_memory_context(
         return ""
 
     lines = ["PAST FAILURES TO AVOID (learn from these mistakes):\n"]
+    used = len(lines[0])
     for i, m in enumerate(memories, 1):
-        lines.append(f"[Memory {i} — similarity: {m['similarity']}]")
-        lines.append(f"Task: {m['task']}")
-        lines.append(f"What was tried:\n{m['code']}")
-        lines.append(f"What went wrong: {m['error']}")
-        lines.append("Do not repeat this approach.\n")
+        entry = "\n".join([
+            f"[Memory {i} — similarity: {m['similarity']}]",
+            f"Task: {_trim(m['task'], _FIELD_LIMITS['task'])}",
+            f"What was tried:\n{_trim(m['code'], _FIELD_LIMITS['code'])}",
+            f"What went wrong: {_trim(m['error'], _FIELD_LIMITS['error'])}",
+            "Do not repeat this approach.\n",
+        ])
+        if used + len(entry) > MEMORY_MAX_CHARS:
+            break
+        lines.append(entry)
+        used += len(entry)
 
-    return "\n".join(lines)
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def memory_stats(collection=None) -> dict[str, Any]:

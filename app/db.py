@@ -1,22 +1,29 @@
 import os
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
 from app.config import DB_PATH
 
 
-def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+@contextmanager
+def get_connection(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
+    """Open a connection, commit on success, roll back on error, and always close it."""
     # Ensure parent directory exists before SQLite creates the file
     os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
-
-    # WAL mode prevents database locks between readers and concurrent attempt writers.
-    # Foreign keys pragma must be turned on explicitly per connection in SQLite.
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+    try:
+        # WAL mode prevents database locks between readers and concurrent attempt writers.
+        # Foreign keys pragma must be turned on explicitly per connection in SQLite.
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_db(db_path: str = DB_PATH) -> None:
