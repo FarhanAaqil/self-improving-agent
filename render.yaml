@@ -22,7 +22,7 @@ services:
       - key: DEMO_MODE
         value: "true"
       - key: MODEL
-        value: "llama-3.3-70b-versatile"
+        value: "qwen/qwen3.8-27b"
       - key: GROQ_API_KEY
         sync: false
       - key: API_KEY

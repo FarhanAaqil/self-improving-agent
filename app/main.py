@@ -1,44 +1,35 @@
+import asyncio
 import glob
 import json
 import logging
 import os
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.code_security_audit import CodeSecurityAudit
+from app import db
 from app.config import (
     ALLOW_CODE_OVERRIDE,
+    ALLOW_UNSAFE_HOST_SUBPROCESS,
     ALLOWED_ORIGINS,
     AVAILABLE_MODELS,
-    CRITIQUE_CONFIDENCE_THRESHOLD,
+    DEMO_MODE,
+    MEMORY_ENABLED,
     MODEL,
     RESULTS_DIR,
     SANDBOX_TIMEOUT,
 )
-from app.critique import critique_code
-from app.db import (
-    get_latest_eval_run,
-    get_run_with_attempts,
-    init_db,
-    insert_attempt,
-    insert_eval_run,
-    insert_run,
-    list_runs,
-    update_attempt_review,
-    update_run_status,
-)
-from app.documentation_agent import document_code
 from app.generator import generate_code
-from app.metrics import calculate_quality_metrics
-from app.performance_agent import analyze_performance
-from app.sandbox import _is_docker_available, run_code
+from app.jobs import recover_interrupted_runs, submit_run
+from app.pipeline import RunSpec, execute_run
+from app.sandbox import SANDBOX_IMAGE, _is_docker_available, docker_run_args, run_code
 from app.schemas import (
     EvalResultOut,
     EvalRunOut,
@@ -48,41 +39,46 @@ from app.schemas import (
     GenerateAndRepairRequest,
     GenerateOut,
     GenerateRequest,
+    RunAccepted,
     RunOut,
+    RunPage,
 )
 from app.security import auth_mode, rate_limited, verify_api_access
-from app.test_agent import generate_unit_tests
 
 logger = logging.getLogger("self_improving_agent")
 
-# Ensure SQLite tables exist immediately upon import
-init_db()
+VERSION = "2.0.0"
+TERMINAL_STATUSES = {"success", "failed", "max_retries_exceeded", "early_stopped"}
+
+# Ensure SQLite tables exist immediately upon import (TestClient skips lifespan)
+db.init_db()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    db.init_db()
+    interrupted = recover_interrupted_runs()
+    if interrupted:
+        logger.warning("Marked %d interrupted run(s) as failed", interrupted)
     yield
 
 
 app = FastAPI(
     title="Self-Improving Code Agent API",
     description="Backend API powering the sandboxed, self-repairing code generation agent.",
-    version="1.0.0",
+    version=VERSION,
     lifespan=lifespan,
 )
 
-# CORS enabled for specified origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,  # auth is header-based; cookies are never needed
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization", "Last-Event-ID"],
 )
 
 
-# Security response headers middleware
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -102,31 +98,90 @@ async def add_security_headers(request: Request, call_next):
     )
     if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    if request.url.path.startswith(("/generate", "/execute", "/runs", "/eval")):
+    if request.url.path.startswith(("/generate", "/execute", "/runs", "/eval", "/memory")):
         response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
+
+
+def _run_out(run: dict) -> RunOut:
+    memories = []
+    if run.get("memories_json"):
+        try:
+            memories = json.loads(run["memories_json"])
+        except ValueError:
+            memories = []
+    return RunOut(**{**run, "memories": memories})
+
+
+def _load_run(run_id: str) -> dict:
+    run = db.get_run_with_attempts(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return run
 
 
 # ── System ───────────────────────────────────────────────────
 
 @app.get("/health", tags=["System"])
 def health_check():
-    from app.config import DEMO_MODE
     from app.github_agent import IS_GITHUB_CONFIGURED
+
     return {
         "status": "healthy",
-        "version": "1.0.0",
+        "version": VERSION,
         "docker_available": _is_docker_available(),
         "demo_mode": DEMO_MODE,
         "github_configured": IS_GITHUB_CONFIGURED,
         "auth": auth_mode(),
         "code_override_enabled": ALLOW_CODE_OVERRIDE,
+        "memory_enabled": MEMORY_ENABLED,
         "models": AVAILABLE_MODELS,
         "default_model": MODEL,
     }
 
 
-# ── Endpoint 1: POST /generate ───────────────────────────────
+@app.get("/models", tags=["System"])
+def list_models():
+    return {"default": MODEL, "models": AVAILABLE_MODELS}
+
+
+@app.get("/sandbox/config", tags=["System"])
+def sandbox_config():
+    """The exact docker command every snippet runs under, so the UI never overclaims."""
+    return {
+        "docker_available": _is_docker_available(),
+        "image": SANDBOX_IMAGE,
+        "timeout_seconds": SANDBOX_TIMEOUT,
+        "command": docker_run_args("sandbox-<id>"),
+        "host_fallback_enabled": ALLOW_UNSAFE_HOST_SUBPROCESS,
+    }
+
+
+@app.get("/sandbox/attacks", tags=["System"])
+def sandbox_attacks():
+    from app.attacks import list_attacks
+
+    return {"items": list_attacks()}
+
+
+@app.post(
+    "/sandbox/attacks/{name}",
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
+    tags=["System"],
+)
+def sandbox_attack(name: str):
+    """Run one of the curated adversarial scripts against the live sandbox."""
+    from app.attacks import run_attack
+
+    if not _is_docker_available():
+        raise HTTPException(status_code=503, detail="Docker is not available on this server.")
+    result = run_attack(name)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Unknown attack '{name}'.")
+    return result
+
+
+# ── Generate only ────────────────────────────────────────────
 
 @app.post(
     "/generate",
@@ -142,24 +197,15 @@ def generate_endpoint(req: GenerateRequest):
         code = generate_code(req.task_description, model=model_name)
     except Exception as e:
         logger.error("LLM generation failed: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="LLM generation encountered an internal server error.",
-        )
+        raise HTTPException(status_code=502, detail="The language model call failed. Try again shortly.")
 
-    insert_run(run_id, req.task_description, final_status="generated", total_attempts=1)
-    insert_attempt(
-        run_id=run_id,
-        attempt_number=1,
-        generated_code=code,
-        model_name=model_name,
-        success=False,
-    )
-
+    db.insert_run(run_id, req.task_description, final_status="generated", total_attempts=1)
+    db.update_run(run_id, model_name=model_name)
+    db.insert_attempt(run_id=run_id, attempt_number=1, generated_code=code, model_name=model_name, success=False)
     return GenerateOut(run_id=run_id, code=code, model=model_name)
 
 
-# ── Endpoint 2: POST /execute/{run_id} ───────────────────────
+# ── Execute existing code ───────────────────────────────────
 
 @app.post(
     "/execute/{run_id}",
@@ -168,10 +214,7 @@ def generate_endpoint(req: GenerateRequest):
     tags=["Agent"],
 )
 def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
-    run = get_run_with_attempts(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-
+    run = _load_run(run_id)
     attempts = run.get("attempts", [])
     # Every execution is recorded as a brand-new attempt, never reusing a number
     attempt_num = max((a["attempt_number"] for a in attempts), default=0) + 1
@@ -198,9 +241,7 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
         raise HTTPException(status_code=422, detail="No code found in this run to execute.")
 
     result = run_code(code_to_run, timeout=SANDBOX_TIMEOUT)
-
-    # Persist attempt result
-    insert_attempt(
+    db.insert_attempt(
         run_id=run_id,
         attempt_number=attempt_num,
         generated_code=code_to_run,
@@ -209,10 +250,11 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
         exit_code=result.get("exit_code"),
         success=result["success"],
         latency_ms=result.get("latency_ms", 0),
+        sandboxed=result.get("sandboxed"),
     )
-
-    new_status = "success" if result["success"] else "failed"
-    update_run_status(run_id, final_status=new_status, total_attempts=attempt_num)
+    db.update_run_status(
+        run_id, final_status="success" if result["success"] else "failed", total_attempts=attempt_num
+    )
 
     return ExecuteOut(
         run_id=run_id,
@@ -222,11 +264,20 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
         error=result.get("error"),
         exit_code=result.get("exit_code"),
         latency_ms=result.get("latency_ms"),
-        sandboxed=result.get("sandboxed", True),
+        sandboxed=result.get("sandboxed", False),
     )
 
 
-# ── Endpoint 3: POST /generate-and-repair ────────────────────
+# ── Full pipeline ────────────────────────────────────────────
+
+def _spec(req: GenerateAndRepairRequest) -> RunSpec:
+    return RunSpec(
+        task=req.task_description,
+        model=req.model or MODEL,
+        max_attempts=req.max_attempts,
+        skip_agents=list(req.skip_agents),
+    )
+
 
 @app.post(
     "/generate-and-repair",
@@ -235,197 +286,39 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
     tags=["Agent"],
 )
 def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
+    """Synchronous version: blocks until the run finishes. Prefer POST /runs for UIs."""
     run_id = f"run_{uuid.uuid4().hex[:8]}"
-    model_name = req.model or MODEL
-
-    insert_run(run_id, req.task_description, final_status="running")
-
-    last_error = None
-    working_code = None
-    working_output = None
-    attempts_done = 0
-    passing_attempt_id: int | None = None
-    last_failed_code: str | None = None
-
-    for attempt in range(1, req.max_attempts + 1):
-        attempts_done = attempt
-        try:
-            code = generate_code(
-                task=req.task_description,
-                error=last_error,
-                attempt=attempt,
-                model=model_name,
-            )
-        except Exception as e:
-            logger.error("LLM call failed on attempt %d: %s", attempt, e, exc_info=True)
-            insert_attempt(
-                run_id=run_id,
-                attempt_number=attempt,
-                generated_code="# generation error",
-                stderr=str(e),
-                exit_code=-1,
-                success=False,
-                model_name=model_name,
-            )
-            update_run_status(run_id, final_status="failed", total_attempts=attempt)
-            raise HTTPException(
-                status_code=500,
-                detail=f"LLM call failed on attempt {attempt}. Please check service logs.",
-            )
-
-        exec_res = run_code(code, timeout=SANDBOX_TIMEOUT)
-
-        critique_conf = None
-        critique_re = None
-        should_early_stop = False
-
-        if exec_res["success"]:
-            working_code = code
-            working_output = exec_res.get("output") or ""
-            passing_attempt_id = insert_attempt(
-                run_id=run_id,
-                attempt_number=attempt,
-                generated_code=code,
-                stdout=exec_res.get("output"),
-                stderr=exec_res.get("error"),
-                exit_code=exec_res.get("exit_code"),
-                success=True,
-                latency_ms=exec_res.get("latency_ms"),
-                model_name=model_name,
-            )
-            break
-        else:
-            last_error = exec_res.get("error")
-            last_failed_code = code
-            if "critique" not in req.skip_agents:
-                try:
-                    c_res = critique_code(
-                        task=req.task_description,
-                        code=code,
-                        output=exec_res.get("error") or exec_res.get("output") or "",
-                        model_override=model_name,
-                    )
-                    critique_conf = c_res.get("confidence")
-                    critique_re = c_res.get("reasoning")
-                    if critique_conf is not None and critique_conf < CRITIQUE_CONFIDENCE_THRESHOLD:
-                        should_early_stop = True
-                except Exception:
-                    critique_conf = None
-                    critique_re = None
-
-            insert_attempt(
-                run_id=run_id,
-                attempt_number=attempt,
-                generated_code=code,
-                stdout=exec_res.get("output"),
-                stderr=exec_res.get("error"),
-                exit_code=exec_res.get("exit_code"),
-                success=False,
-                latency_ms=exec_res.get("latency_ms"),
-                model_name=model_name,
-                critique_confidence=critique_conf,
-                critique_reasoning=critique_re,
-            )
-
-            if should_early_stop:
-                break
-
-    # Post-success review pipeline
-    if working_code and passing_attempt_id is not None:
-        generated_tests = None
-        performance_notes = None
-        security_audit = None
-        critique_conf = None
-        critique_re = None
-
-        if "test" not in req.skip_agents and "tests" not in req.skip_agents:
-            try:
-                generated_tests = generate_unit_tests(req.task_description, working_code, model_override=model_name)
-            except Exception:
-                generated_tests = None
-
-        if "performance" not in req.skip_agents:
-            try:
-                performance_notes = analyze_performance(req.task_description, working_code, model_override=model_name)
-            except Exception:
-                performance_notes = None
-
-        if "security_audit" not in req.skip_agents and "security" not in req.skip_agents:
-            try:
-                security_audit = CodeSecurityAudit.audit(req.task_description, working_code, model_override=model_name)
-            except Exception:
-                security_audit = None
-
-        if "docs" not in req.skip_agents and "documentation" not in req.skip_agents:
-            try:
-                documented_code = document_code(req.task_description, working_code, model_override=model_name)
-                if documented_code:
-                    working_code = documented_code
-            except Exception:
-                pass
-
-        if "critique" not in req.skip_agents:
-            try:
-                c_res = critique_code(req.task_description, working_code, working_output, model_override=model_name)
-                critique_conf = c_res.get("confidence")
-                critique_re = c_res.get("reasoning")
-            except Exception:
-                critique_conf = None
-                critique_re = None
-
-        quality_overall_score = None
-        quality_report_json = None
-        try:
-            metrics_report = calculate_quality_metrics(
-                code=working_code,
-                generated_tests=generated_tests,
-                performance_notes=performance_notes,
-                security_audit=security_audit,
-            )
-            quality_overall_score = metrics_report.get("overall_score")
-            quality_report_json = json.dumps(metrics_report)
-        except Exception:
-            pass
-
-        update_attempt_review(
-            attempt_id=passing_attempt_id,
-            critique_confidence=critique_conf,
-            critique_reasoning=critique_re,
-            generated_tests=generated_tests,
-            performance_notes=performance_notes,
-            security_audit=security_audit,
-            quality_overall_score=quality_overall_score,
-            quality_report_json=quality_report_json,
-            generated_code=working_code,
-        )
-
-    if working_code:
-        final_status = "success"
-    elif should_early_stop:
-        final_status = "early_stopped"
-    else:
-        final_status = "max_retries_exceeded"
-    update_run_status(run_id, final_status=final_status, total_attempts=attempts_done)
-
-    # On terminal failure, record failure in ChromaDB vector memory for future retrieval
-    if not working_code and last_error and last_failed_code:
-        try:
-            from app.memory import store_failure
-            store_failure(
-                task=req.task_description,
-                code=last_failed_code,
-                error=last_error,
-            )
-        except Exception:
-            pass
-
-    full_run = get_run_with_attempts(run_id)
-    if not full_run:
-        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    return RunOut(**full_run)
+    db.insert_run(run_id, req.task_description, final_status="queued")
+    execute_run(run_id, _spec(req))
+    return _run_out(_load_run(run_id))
 
 
-# ── Endpoint 4: GET /runs/{run_id} & GET /runs ───────────────
+@app.post(
+    "/runs",
+    response_model=RunAccepted,
+    status_code=202,
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
+    tags=["Runs"],
+)
+def create_run(req: GenerateAndRepairRequest):
+    """Start a run in the background and return immediately; follow it via /runs/{id}/events."""
+    run_id = f"run_{uuid.uuid4().hex[:8]}"
+    spec = _spec(req)
+    db.insert_run(run_id, req.task_description, final_status="queued")
+    db.update_run(run_id, model_name=spec.model)
+    submit_run(run_id, spec)
+    return RunAccepted(run_id=run_id, events_url=f"/runs/{run_id}/events")
+
+
+@app.get("/runs", response_model=RunPage, dependencies=[Depends(verify_api_access)], tags=["Runs"])
+def list_runs_endpoint(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: Optional[str] = Query(None, max_length=200),
+    status: Optional[str] = Query(None, pattern="^(success|failed|early_stopped|running)$"),
+):
+    return db.list_run_summaries(page=page, page_size=page_size, q=q, status=status)
+
 
 @app.get(
     "/runs/{run_id}",
@@ -434,18 +327,50 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
     tags=["Runs"],
 )
 def get_run_endpoint(run_id: str):
-    run = get_run_with_attempts(run_id)
-    if not run:
+    return _run_out(_load_run(run_id))
+
+
+def _sse(event_id: int, event_type: str, payload: dict) -> str:
+    return f"id: {event_id}\nevent: {event_type}\ndata: {json.dumps(payload, default=str)}\n\n"
+
+
+@app.get("/runs/{run_id}/events", dependencies=[Depends(verify_api_access)], tags=["Runs"])
+async def run_events(run_id: str, request: Request, after: int = Query(0, ge=0)):
+    """Server-sent events for a run. Replays history, then streams until the run finishes."""
+    if not await asyncio.to_thread(db.get_run, run_id):
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    return RunOut(**run)
+    header = request.headers.get("last-event-id", "")
+    start = int(header) if header.isdigit() else after
+
+    async def stream():
+        last, quiet = start, 0.0
+        while not await request.is_disconnected():
+            events = await asyncio.to_thread(db.get_events, run_id, last)
+            for event in events:
+                last = event["event_id"]
+                yield _sse(last, event["type"], event["payload"])
+                if event["type"] == "run_finished":
+                    return
+            if not events:
+                run = await asyncio.to_thread(db.get_run, run_id)
+                if run and run["final_status"] in TERMINAL_STATUSES:
+                    # Older runs (or ones finished without events) still get a clean ending
+                    yield _sse(last, "run_finished", {"status": run["final_status"]})
+                    return
+                quiet += 0.5
+                if quiet >= 15:
+                    quiet = 0.0
+                    yield ": keep-alive\n\n"
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
-@app.get("/runs", dependencies=[Depends(verify_api_access)], tags=["Runs"])
-def list_runs_endpoint(limit: int = Query(50, ge=1, le=100)):
-    return list_runs(limit=limit)
-
-
-# ── PR Automation: POST /runs/{run_id}/pr ───────────────────
+# ── PR automation ────────────────────────────────────────────
 
 @app.post(
     "/runs/{run_id}/pr",
@@ -454,55 +379,116 @@ def list_runs_endpoint(limit: int = Query(50, ge=1, le=100)):
 )
 def create_pull_request_endpoint(run_id: str, repo: Optional[str] = None):
     from app.github_agent import open_pull_request_for_run
+
     result = open_pull_request_for_run(run_id=run_id, repo=repo)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
 
 
-# ── Endpoint 5: GET /eval/latest ─────────────────────────────
+# ── Memory ───────────────────────────────────────────────────
+
+def _memory_or_503():
+    if not MEMORY_ENABLED:
+        raise HTTPException(status_code=503, detail="Vector memory is disabled on this server.")
+    from app import memory
+
+    return memory
+
+
+@app.get("/memory", dependencies=[Depends(verify_api_access)], tags=["Memory"])
+def list_memory(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    kind: Optional[str] = Query(None, pattern="^(failure|fix)$"),
+):
+    return _memory_or_503().list_memories(limit=limit, offset=offset, kind=kind)
+
+
+@app.get("/memory/stats", dependencies=[Depends(verify_api_access)], tags=["Memory"])
+def memory_stats():
+    return _memory_or_503().memory_stats()
+
+
+@app.get("/memory/search", dependencies=[Depends(verify_api_access)], tags=["Memory"])
+def search_memory(
+    q: str = Query(..., min_length=3, max_length=500),
+    threshold: float = Query(0.3, ge=0.0, le=1.0),
+):
+    """What does the agent remember about this? Uses a looser threshold than generation."""
+    return {"items": _memory_or_503().retrieve_similar_failures(q, top_k=10, similarity_threshold=threshold)}
+
+
+@app.delete("/memory/{memory_id}", dependencies=[Depends(verify_api_access)], tags=["Memory"])
+def delete_memory(memory_id: str):
+    if not _memory_or_503().delete_memory(memory_id):
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return {"deleted": memory_id}
+
+
+@app.post("/memory/{memory_id}/pin", dependencies=[Depends(verify_api_access)], tags=["Memory"])
+def pin_memory(memory_id: str, pinned: bool = True):
+    if not _memory_or_503().set_pinned(memory_id, pinned):
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return {"id": memory_id, "pinned": pinned}
+
+
+# ── Evaluation ───────────────────────────────────────────────
+
+_eval_progress: dict[str, dict] = {}
+_eval_lock = threading.Lock()
+
+
+def _result_files() -> list[dict]:
+    """Committed result JSONs (top level only; results/legacy is ignored)."""
+    out = []
+    for path in glob.glob(os.path.join(RESULTS_DIR, "*.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if "agent" in data and "baseline" in data:
+            out.append(data)
+    return out
+
+
+def _all_evals() -> list[dict]:
+    """Every known eval, newest first by its recorded run time (not by file name)."""
+    with db.get_connection() as conn:
+        rows = conn.execute("SELECT raw_json FROM eval_runs ORDER BY run_at DESC LIMIT 50").fetchall()
+    evals, seen = [], set()
+    for row in rows:
+        try:
+            data = json.loads(row["raw_json"] or "{}")
+        except ValueError:
+            continue
+        if "agent" in data:
+            evals.append(data)
+            seen.add(data.get("eval_id"))
+    evals += [d for d in _result_files() if d.get("eval_id") not in seen]
+    return sorted(evals, key=lambda d: d.get("run_at", ""), reverse=True)
+
+
+def _eval_out(data: dict) -> EvalResultOut:
+    return EvalResultOut(
+        eval_id=data.get("eval_id", "unknown"),
+        benchmark_name=data.get("benchmark", "humaneval"),
+        pass_at_1=data.get("pass_at_1"),
+        pass_at_5=data.get("pass_at_5"),
+        avg_attempts=data.get("avg_attempts"),
+        avg_latency_ms=data.get("avg_latency_ms"),
+        total_problems=data.get("total_problems"),
+        run_at=data.get("run_at"),
+        raw=data,
+    )
+
 
 @app.get("/eval/latest", response_model=EvalResultOut, tags=["Evaluation"])
 def get_latest_eval_endpoint():
-    # Priority 1: Check committed JSON results in results/
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    json_files = sorted(glob.glob(os.path.join(RESULTS_DIR, "*.json")), reverse=True)
-
-    if json_files:
-        try:
-            with open(json_files[0], "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return EvalResultOut(
-                    eval_id=data.get("eval_id", os.path.basename(json_files[0])),
-                    benchmark_name=data.get("benchmark", "humaneval"),
-                    pass_at_1=data.get("pass_at_1"),
-                    pass_at_5=data.get("pass_at_5"),
-                    avg_attempts=data.get("avg_attempts"),
-                    avg_latency_ms=data.get("avg_latency_ms"),
-                    total_problems=data.get("total_problems", len(data.get("results", []))),
-                    run_at=data.get("run_at"),
-                    raw=data,
-                )
-        except Exception:
-            pass
-
-    # Priority 2: Check SQLite eval_runs table
-    latest = get_latest_eval_run()
-    if latest:
-        raw_dict = json.loads(latest["raw_json"]) if latest.get("raw_json") else None
-        return EvalResultOut(
-            eval_id=latest["eval_id"],
-            benchmark_name=latest["benchmark_name"],
-            pass_at_1=latest.get("pass_at_1"),
-            pass_at_5=latest.get("pass_at_5"),
-            avg_attempts=latest.get("avg_attempts"),
-            avg_latency_ms=latest.get("avg_latency_ms"),
-            total_problems=latest.get("total_problems"),
-            run_at=latest.get("run_at"),
-            raw=raw_dict,
-        )
-
-    # Empty baseline fallback
+    evals = _all_evals()
+    if evals:
+        return _eval_out(evals[0])
     return EvalResultOut(
         eval_id="none",
         benchmark_name="humaneval",
@@ -515,42 +501,52 @@ def get_latest_eval_endpoint():
     )
 
 
-# ── Endpoint 6: POST /eval/run ───────────────────────────────
+@app.get("/eval/history", tags=["Evaluation"])
+def eval_history(limit: int = Query(20, ge=1, le=50)):
+    return {"items": [{k: v for k, v in d.items() if k != "results"} for d in _all_evals()[:limit]]}
+
+
+@app.get("/eval/status/{eval_id}", tags=["Evaluation"])
+def eval_status(eval_id: str):
+    with _eval_lock:
+        state = _eval_progress.get(eval_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Unknown or expired evaluation id.")
+    return state
+
 
 def _run_eval_job(eval_id: str, benchmark: str, subset_size: int):
-    # Executed as a background worker task
+    from eval.benchmark import run_benchmark, save_results
+
+    def progress(done: int, total: int, record: dict):
+        with _eval_lock:
+            state = _eval_progress[eval_id]
+            state.update(done=done, total=total)
+            state["recent"] = ([{"id": record["problem_id"], "passed": record["passed"]}] + state["recent"])[:12]
+
+    with _eval_lock:
+        _eval_progress[eval_id] = {
+            "eval_id": eval_id, "status": "running", "done": 0, "total": subset_size, "recent": [],
+        }
     try:
-        from groq import Groq
-
-        from app.config import GROQ_API_KEY
-        from eval.evaluate import evaluate_all
-        from eval.humaneval_problems import PROBLEMS
-
-        client = Groq(api_key=GROQ_API_KEY)
-        subset = PROBLEMS[:subset_size] if subset_size else PROBLEMS
-        results = evaluate_all(subset, client, MODEL, max_retries=3)
-
-        insert_eval_run(
+        summary = run_benchmark(suite=benchmark, limit=subset_size, eval_id=eval_id, progress=progress)
+        db.insert_eval_run(
             eval_id=eval_id,
             benchmark_name=benchmark,
-            pass_at_1=results["agent"]["pass_at_1"],
-            avg_attempts=results["agent"]["avg_attempts"],
-            total_problems=results["total_problems"],
-            raw_json=json.dumps(results),
+            pass_at_1=summary["pass_at_1"],
+            pass_at_5=summary["pass_at_5"],
+            avg_attempts=summary["avg_attempts"],
+            avg_latency_ms=summary["avg_latency_ms"],
+            total_problems=summary["total_problems"],
+            raw_json=json.dumps(summary),
         )
-
-        # Write to results/ for git commit persistence
-        results_file = os.path.join(RESULTS_DIR, f"{eval_id}.json")
-        with open(results_file, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
-
+        save_results(summary)
+        with _eval_lock:
+            _eval_progress[eval_id]["status"] = "done"
     except Exception as e:
         logger.error("Eval background job %s failed: %s", eval_id, e, exc_info=True)
-        insert_eval_run(
-            eval_id=eval_id,
-            benchmark_name=benchmark,
-            raw_json=json.dumps({"error": "Evaluation execution failed."}),
-        )
+        with _eval_lock:
+            _eval_progress[eval_id].update(status="failed", error=str(e)[:300])
 
 
 @app.post(
@@ -559,16 +555,15 @@ def _run_eval_job(eval_id: str, benchmark: str, subset_size: int):
     dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["Evaluation"],
 )
-def run_eval_endpoint(req: EvalRunRequest, background_tasks: BackgroundTasks):
-    eval_id = f"eval_{uuid.uuid4().hex[:8]}"
-
-    # Dispatch to background task so the API client is not blocked for minutes
-    background_tasks.add_task(_run_eval_job, eval_id, req.benchmark, req.subset_size)
-
+def run_eval_endpoint(req: EvalRunRequest):
+    eval_id = f"{req.benchmark}_{uuid.uuid4().hex[:8]}"
+    threading.Thread(
+        target=_run_eval_job, args=(eval_id, req.benchmark, req.subset_size), daemon=True
+    ).start()
     return EvalRunOut(
         eval_id=eval_id,
         status="started",
-        message=f"Evaluation {eval_id} started in background for benchmark '{req.benchmark}'.",
+        message=f"Evaluation {eval_id} started on {req.subset_size} {req.benchmark} problems.",
     )
 
 
@@ -605,4 +600,3 @@ if _FRONTEND_DIST.exists():
         if index_file.exists():
             return FileResponse(str(index_file))
         raise HTTPException(status_code=404, detail="Frontend build index.html not found.")
-

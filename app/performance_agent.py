@@ -1,16 +1,4 @@
-from groq import Groq
-
-from app.config import GROQ_API_KEY, MODEL
-
-_default_client: Groq | None = None
-
-
-def _get_client() -> Groq:
-    global _default_client
-    if _default_client is None:
-        _default_client = Groq(api_key=GROQ_API_KEY)
-    return _default_client
-
+from app import llm
 
 PERFORMANCE_PROMPT = """You are a performance profiling and algorithm optimization expert.
 Review the provided Python code for computational complexity (Big-O time and space), redundant operations, and inefficient data structures.
@@ -35,9 +23,6 @@ def analyze_performance(
     model_override: str | None = None,
 ) -> str:
     """Analyze code performance and return 'OPTIMIZED' or numbered suggestions, nothing else."""
-    client = client_override or _get_client()
-    model = model_override or MODEL
-
     prompt = f"""Task:
 {task}
 
@@ -46,17 +31,16 @@ Python Code to analyze:
 
 Provide your performance evaluation."""
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+    raw = llm.chat(
+        [
             {"role": "system", "content": PERFORMANCE_PROMPT},
             {"role": "user", "content": prompt},
         ],
+        model=model_override,
         temperature=0.1,
         max_tokens=600,
+        client=client_override,
     )
-
-    raw = response.choices[0].message.content.strip()
     return _clean_performance_output(raw)
 
 

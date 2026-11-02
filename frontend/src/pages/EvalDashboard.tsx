@@ -47,15 +47,18 @@ export default function EvalDashboard() {
     })
   }
 
-  // Historical / baseline data points
+  // Only measured numbers: the baseline comes from the same eval run, never derived
   const chartData: EvalDataPoint[] = []
+  const measuredBaseline = (evalResult?.raw?.baseline as { pass_at_1?: number } | undefined)?.pass_at_1
   if (evalResult && evalResult.pass_at_1 !== null && evalResult.pass_at_1 !== undefined && evalResult.eval_id !== 'none') {
-    chartData.push({
-      date: 'Zero-shot Baseline',
-      passAt1: Math.max(0, (evalResult.pass_at_1 || 50) - 18),
-      passAt5: Math.max(0, (evalResult.pass_at_5 || 65) - 22),
-      problems: evalResult.total_problems || 50,
-    })
+    if (typeof measuredBaseline === 'number') {
+      chartData.push({
+        date: 'Single-shot baseline',
+        passAt1: measuredBaseline,
+        passAt5: measuredBaseline,
+        problems: evalResult.total_problems || 0,
+      })
+    }
     chartData.push({
       date: evalResult.run_at ? new Date(evalResult.run_at).toLocaleDateString() : 'Current Run',
       passAt1: evalResult.pass_at_1,

@@ -1,291 +1,229 @@
+"""Pipeline behaviour: test-first repair loop, diagnosis, early stop, docs re-verification, memory."""
+
+import json
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from app.harness import Verification
 from app.main import app
 
 client = TestClient(app)
 
+SPEC_TESTS = "def test_answer():\n    assert solve() == 42\n"
 
-def test_repair_loop_retry_to_success():
-    """Test that a failed first attempt triggers critique and retries to success."""
-    attempt_codes = [
-        "def solve(): return 1 / 0",  # Fails attempt 1
-        "def solve(): return 42\nprint(solve())",  # Passes attempt 2
-    ]
-    gen_mock = MagicMock(side_effect=attempt_codes)
 
-    # Sandbox responses for each attempt
-    exec_responses = [
-        {"success": False, "error": "ZeroDivisionError: division by zero", "output": "", "exit_code": 1, "latency_ms": 15},
-        {"success": True, "error": None, "output": "42\n", "exit_code": 0, "latency_ms": 12},
-    ]
-    run_mock = MagicMock(side_effect=exec_responses)
+def passed(total=1, coverage=1.0, output="42"):
+    return Verification(True, output, None, 0, 10, True, total=total, passed=total, coverage=coverage)
 
-    # Critique mock returning confidence >= 0.3 for the retry
-    critique_mock = MagicMock(
-        return_value={
-            "verdict": "REWRITE",
-            "confidence": 0.8,
-            "reasoning": "Zero division error, needs fallback logic",
-            "issues": ["Division by zero"],
-            "instructions": "Avoid dividing by zero",
-            "raw": "VERDICT: REWRITE\nCONFIDENCE: 0.8",
-        }
+
+def failed(error="ZeroDivisionError: division by zero", total=1):
+    return Verification(
+        False, None, error, 1, 12, True, total=total, passed=0,
+        failures=[{"test": "test_answer", "error": error}],
     )
 
-    with patch("app.main.generate_code", gen_mock), \
-         patch("app.main.run_code", run_mock), \
-         patch("app.main.critique_code", critique_mock):
 
+def diagnosis(confidence=0.8, blame="code"):
+    return {
+        "summary": "My code divides by zero.",
+        "root_cause": "Division by zero on empty input",
+        "fix_plan": "Guard the empty case",
+        "blame": blame,
+        "confidence": confidence,
+        "reasoning": "My code divides by zero.",
+        "raw": "{}",
+    }
+
+
+def run_pipeline(codes, verifications, *, diag=None, skip=None, docs=None, tests=SPEC_TESTS, extra=None):
+    """Drive /generate-and-repair with every external dependency mocked."""
+    mocks = {
+        "generate_code": MagicMock(side_effect=codes),
+        "verify": MagicMock(side_effect=verifications),
+        "diagnose_failure": MagicMock(return_value=diag or diagnosis()),
+        "generate_spec_tests": MagicMock(return_value=tests),
+        "analyze_performance": MagicMock(return_value="OPTIMIZED"),
+        "document_code": MagicMock(return_value=docs),
+        "critique_code": MagicMock(return_value={"confidence": 0.95, "reasoning": "Clean"}),
+    }
+    with ExitStack() as stack:
+        for name, mock in mocks.items():
+            stack.enter_context(patch(f"app.pipeline.{name}", mock))
+        audit = stack.enter_context(patch("app.pipeline.CodeSecurityAudit.audit", return_value="SECURE"))
+        mocks["audit"] = audit
+        for target, value in (extra or {}).items():
+            stack.enter_context(patch(target, value))
         resp = client.post(
             "/generate-and-repair",
-            json={
-                "task_description": "Write a function returning 42",
-                "max_attempts": 3,
-            },
+            json={"task_description": "Write solve() returning 42", "max_attempts": 3, "skip_agents": skip or []},
         )
+    assert resp.status_code == 200, resp.text
+    return resp.json(), mocks
 
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["final_status"] == "success"
-        assert data["total_attempts"] == 2
-        assert len(data["attempts"]) == 2
-        assert data["attempts"][0]["success"] is False
-        assert data["attempts"][0]["critique_confidence"] == 0.8
-        assert data["attempts"][0]["critique_reasoning"] == "Zero division error, needs fallback logic"
-        assert data["attempts"][1]["success"] is True
+
+def test_repair_loop_retry_to_success_feeds_code_error_and_diagnosis_back():
+    data, m = run_pipeline(
+        ["def solve(): return 1 / 0", "def solve(): return 42"],
+        [failed(), passed()],
+    )
+    assert data["final_status"] == "success"
+    assert data["total_attempts"] == 2
+    assert [a["success"] for a in data["attempts"]] == [False, True]
+    assert data["attempts"][0]["critique_confidence"] == 0.8
+    assert data["spec_tests"] == SPEC_TESTS
+
+    repair_call = m["generate_code"].call_args_list[1].kwargs
+    assert repair_call["previous_code"] == "def solve(): return 1 / 0"
+    assert "ZeroDivisionError" in repair_call["error"]
+    assert "Guard the empty case" in repair_call["diagnosis"]
+    assert repair_call["tests"] == SPEC_TESTS
+
+
+def test_success_requires_tests_to_actually_pass():
+    """Exit code 0 is not enough: the harness verdict decides."""
+    data, _ = run_pipeline(["def solve(): return 41"] * 3, [failed("test_answer: AssertionError")] * 3)
+    assert data["final_status"] == "max_retries_exceeded"
+    assert data["attempts"][0]["tests_passed"] == 0
+    assert data["attempts"][0]["tests_total"] == 1
 
 
 def test_repair_loop_early_stop_on_low_confidence():
-    """Test that critique confidence < 0.3 aborts the repair loop immediately."""
-    gen_mock = MagicMock(return_value="def solve(): raise RuntimeError('Impossible')")
-    run_mock = MagicMock(
-        return_value={
-            "success": False,
-            "error": "RuntimeError: Impossible specification",
-            "output": "",
-            "exit_code": 1,
-            "latency_ms": 20,
-        }
-    )
-
-    # Critique reports low confidence (< 0.3) indicating intractable problem
-    critique_mock = MagicMock(
-        return_value={
-            "verdict": "REWRITE",
-            "confidence": 0.15,
-            "reasoning": "Impossible specification, fundamental contradiction",
-            "issues": ["Contradictory requirements"],
-            "instructions": "Cannot be solved as specified",
-            "raw": "VERDICT: REWRITE\nCONFIDENCE: 0.15",
-        }
-    )
-
-    with patch("app.main.generate_code", gen_mock), \
-         patch("app.main.run_code", run_mock), \
-         patch("app.main.critique_code", critique_mock):
-
-        resp = client.post(
-            "/generate-and-repair",
-            json={
-                "task_description": "Solve halting problem",
-                "max_attempts": 4,
-            },
-        )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["final_status"] == "early_stopped"
-        assert data["total_attempts"] == 1
-        assert len(data["attempts"]) == 1
-        assert data["attempts"][0]["critique_confidence"] == 0.15
-        assert "Impossible specification" in data["attempts"][0]["critique_reasoning"]
-        # Ensure it stopped early and did not generate 4 attempts
-        assert gen_mock.call_count == 1
+    data, m = run_pipeline(["def solve(): raise RuntimeError()"], [failed()], diag=diagnosis(confidence=0.1))
+    assert data["final_status"] == "early_stopped"
+    assert data["total_attempts"] == 1
+    assert m["generate_code"].call_count == 1
 
 
 def test_repair_loop_max_retries_exceeded():
-    """Test that failures with normal confidence run up to max_attempts."""
-    gen_mock = MagicMock(return_value="def solve(): pass")
-    run_mock = MagicMock(
-        return_value={
-            "success": False,
-            "error": "AssertionError",
-            "output": "",
-            "exit_code": 1,
-            "latency_ms": 10,
-        }
+    data, m = run_pipeline(["def solve(): pass"] * 3, [failed()] * 3)
+    assert data["final_status"] == "max_retries_exceeded"
+    assert len(data["attempts"]) == 3
+    assert m["generate_code"].call_count == 3
+
+
+def test_skip_all_agents_leaves_code_untouched():
+    code = "def solve(): return 42"
+    data, m = run_pipeline(
+        [code], [passed(total=0)], tests=None,
+        skip=["test", "performance", "security_audit", "docs", "critique"],
     )
-    critique_mock = MagicMock(
-        return_value={
-            "verdict": "REWRITE",
-            "confidence": 0.6,
-            "reasoning": "Logic can be fixed",
-            "issues": ["Incomplete logic"],
-            "instructions": "Fill out logic",
-            "raw": "VERDICT: REWRITE\nCONFIDENCE: 0.6",
-        }
+    assert data["final_status"] == "success"
+    assert data["final_code"] == code
+    assert data["spec_tests"] is None
+    for name in ("generate_spec_tests", "analyze_performance", "document_code", "critique_code", "audit"):
+        m[name].assert_not_called()
+
+
+def test_documented_code_is_kept_only_when_it_still_passes():
+    raw, doc = "def solve(): return 42", 'def solve():\n    """Answer."""\n    return 42'
+
+    kept, _ = run_pipeline([raw], [passed(), passed()], docs=doc)
+    assert kept["final_code"] == doc
+    assert kept["docs_applied"] is True
+    # The attempt keeps the exact code that was verified
+    assert kept["attempts"][0]["generated_code"] == raw
+
+    dropped, _ = run_pipeline([raw], [passed(), failed("SyntaxError")], docs="def solve(:")
+    assert dropped["final_code"] == raw
+    assert dropped["docs_applied"] is False
+
+
+def test_quality_metrics_come_from_measured_data():
+    data, _ = run_pipeline(["def solve(): return 42"], [passed(total=4, coverage=0.75)])
+    attempt = data["attempts"][0]
+    report = json.loads(attempt["quality_report_json"])
+    assert report["tests_passed"] == 4
+    assert report["estimated_coverage"] == 0.75
+    assert attempt["quality_overall_score"] is not None
+
+
+def test_tests_blamed_by_diagnosis_are_rewritten_once():
+    data, m = run_pipeline(
+        ["def solve(): return 42"] * 3,
+        [failed(), failed(), passed()],
+        diag=diagnosis(blame="tests"),
     )
-
-    with patch("app.main.generate_code", gen_mock), \
-         patch("app.main.run_code", run_mock), \
-         patch("app.main.critique_code", critique_mock):
-
-        resp = client.post(
-            "/generate-and-repair",
-            json={
-                "task_description": "Write complex parser",
-                "max_attempts": 3,
-            },
-        )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["final_status"] == "max_retries_exceeded"
-        assert data["total_attempts"] == 3
-        assert len(data["attempts"]) == 3
-        assert gen_mock.call_count == 3
+    assert data["final_status"] == "success"
+    # Initial spec tests + exactly one rewrite
+    assert m["generate_spec_tests"].call_count == 2
 
 
-def test_skip_all_post_success_agents():
-    """Verify skip_agents=['test', 'performance', 'security_audit', 'docs'] produces identical behavior to pre-agent runs."""
-    original_code = "def solve(): return 42\nprint(solve())"
-    gen_mock = MagicMock(return_value=original_code)
-    run_mock = MagicMock(
-        return_value={
-            "success": True,
-            "error": None,
-            "output": "42\n",
-            "exit_code": 0,
-            "latency_ms": 8,
-        }
+def test_terminal_failure_is_remembered():
+    store = MagicMock()
+    data, _ = run_pipeline(
+        ["def broken(): raise ValueError('Fatal')"] * 3,
+        [failed("ValueError: Fatal")] * 3,
+        skip=["critique"],
+        extra={"app.pipeline.MEMORY_ENABLED": True, "app.memory.store_failure": store,
+               "app.memory.retrieve_similar_failures": MagicMock(return_value=[])},
     )
-
-    test_agent_mock = MagicMock()
-    perf_agent_mock = MagicMock()
-    sec_agent_mock = MagicMock()
-    docs_agent_mock = MagicMock()
-    critique_mock = MagicMock()
-
-    with patch("app.main.generate_code", gen_mock), \
-         patch("app.main.run_code", run_mock), \
-         patch("app.main.generate_unit_tests", test_agent_mock), \
-         patch("app.main.analyze_performance", perf_agent_mock), \
-         patch("app.main.CodeSecurityAudit.audit", sec_agent_mock), \
-         patch("app.main.document_code", docs_agent_mock), \
-         patch("app.main.critique_code", critique_mock):
-
-        resp = client.post(
-            "/generate-and-repair",
-            json={
-                "task_description": "Return 42",
-                "max_attempts": 2,
-                "skip_agents": ["test", "performance", "security_audit", "docs", "critique"],
-            },
-        )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["final_status"] == "success"
-        assert data["total_attempts"] == 1
-        attempt = data["attempts"][0]
-        # Verify review agents were skipped
-        assert attempt["generated_tests"] is None
-        assert attempt["performance_notes"] is None
-        assert attempt["security_audit"] is None
-        assert attempt["critique_confidence"] is None
-        assert attempt["critique_reasoning"] is None
-        # Code untouched by documentation agent
-        assert attempt["generated_code"] == original_code
-
-        # None of the review agent mocks were called
-        test_agent_mock.assert_not_called()
-        perf_agent_mock.assert_not_called()
-        sec_agent_mock.assert_not_called()
-        docs_agent_mock.assert_not_called()
-        critique_mock.assert_not_called()
+    assert data["final_status"] == "max_retries_exceeded"
+    store.assert_called_once()
+    assert "ValueError: Fatal" in store.call_args.kwargs["error"]
+    assert "def broken()" in store.call_args.kwargs["code"]
 
 
-def test_post_success_pipeline_populates_review_and_metrics():
-    """Verify that all review agents and metrics populate the passing attempt."""
-    raw_code = "def add(a, b): return a + b"
-    doc_code = "def add(a: int, b: int) -> int:\n    '''Return sum of a and b.'''\n    return a + b"
-
-    gen_mock = MagicMock(return_value=raw_code)
-    run_mock = MagicMock(
-        return_value={
-            "success": True,
-            "error": None,
-            "output": "",
-            "exit_code": 0,
-            "latency_ms": 12,
-        }
+def test_fix_after_failure_is_remembered_as_a_lesson():
+    lesson = MagicMock()
+    recalled = [{"id": "m1", "kind": "fix", "task": "t", "code": "", "error": "e", "lesson": "l", "similarity": 0.9}]
+    data, _ = run_pipeline(
+        ["def solve(): return 1/0", "def solve(): return 42"],
+        [failed(), passed()],
+        extra={"app.pipeline.MEMORY_ENABLED": True, "app.memory.store_lesson": lesson,
+               "app.memory.mark_used": MagicMock(),
+               "app.memory.retrieve_similar_failures": MagicMock(return_value=recalled)},
     )
-
-    with patch("app.main.generate_code", gen_mock), \
-         patch("app.main.run_code", run_mock), \
-         patch("app.main.generate_unit_tests", return_value="def test_add(): assert add(1, 2) == 3"), \
-         patch("app.main.analyze_performance", return_value="OPTIMIZED"), \
-         patch("app.main.CodeSecurityAudit.audit", return_value="SECURE"), \
-         patch("app.main.document_code", return_value=doc_code), \
-         patch("app.main.critique_code", return_value={"confidence": 0.95, "reasoning": "Clean logic"}):
-
-        resp = client.post(
-            "/generate-and-repair",
-            json={
-                "task_description": "Write add function",
-                "max_attempts": 2,
-            },
-        )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["final_status"] == "success"
-        attempt = data["attempts"][0]
-        assert attempt["generated_code"] == doc_code
-        assert "test_add" in attempt["generated_tests"]
-        assert attempt["performance_notes"] == "OPTIMIZED"
-        assert attempt["security_audit"] == "SECURE"
-        assert attempt["critique_confidence"] == 0.95
-        assert attempt["critique_reasoning"] == "Clean logic"
-        assert attempt["quality_overall_score"] is not None
-        assert attempt["quality_overall_score"] > 0.8
-        assert "cyclomatic_complexity" in attempt["quality_report_json"]
+    assert data["final_status"] == "success"
+    assert data["memories"][0]["id"] == "m1"
+    lesson.assert_called_once()
+    assert lesson.call_args.kwargs["lesson"] == "Guard the empty case"
 
 
-def test_terminal_failure_writes_to_chromadb_memory():
-    """Verify that on terminal failure, store_failure is called with task, code, and error."""
-    gen_mock = MagicMock(return_value="def broken(): raise ValueError('Fatal error')")
-    run_mock = MagicMock(
-        return_value={
-            "success": False,
-            "error": "ValueError: Fatal error",
-            "output": "",
-            "exit_code": 1,
-            "latency_ms": 15,
-        }
-    )
+def test_pipeline_crash_marks_run_failed_instead_of_hanging():
+    with patch("app.pipeline.generate_spec_tests", side_effect=RuntimeError("groq down")), \
+         patch("app.pipeline.generate_code", side_effect=RuntimeError("groq down")):
+        resp = client.post("/generate-and-repair", json={"task_description": "anything at all"})
+    assert resp.status_code == 200
+    assert resp.json()["final_status"] == "failed"
 
-    with patch("app.main.generate_code", gen_mock), \
-         patch("app.main.run_code", run_mock), \
-         patch("app.memory.store_failure") as store_mock:
 
-        resp = client.post(
-            "/generate-and-repair",
-            json={
-                "task_description": "Fatal failing task",
-                "max_attempts": 2,
-                "skip_agents": ["critique"],
-            },
-        )
+def test_events_are_recorded_and_streamed():
+    data, _ = run_pipeline(["def solve(): return 1/0", "def solve(): return 42"], [failed(), passed()])
+    with client.stream("GET", f"/runs/{data['run_id']}/events") as resp:
+        body = "".join(resp.iter_text())
+    for event in ("run_started", "tests_ready", "attempt_started", "sandbox_result",
+                  "diagnosis", "verified", "quality", "run_finished"):
+        assert f"event: {event}" in body
 
-        assert resp.status_code == 200
-        assert resp.json()["final_status"] == "max_retries_exceeded"
-        # store_failure must have been called with task, code, and error
-        store_mock.assert_called_once()
-        kwargs = store_mock.call_args[1]
-        assert kwargs["task"] == "Fatal failing task"
-        assert "def broken()" in kwargs["code"]
-        assert "ValueError: Fatal error" in kwargs["error"]
+    # Resuming after the last seen id only replays what came later
+    last_id = int([ln for ln in body.splitlines() if ln.startswith("id: ")][-2].split()[1])
+    with client.stream("GET", f"/runs/{data['run_id']}/events", headers={"Last-Event-ID": str(last_id)}) as resp:
+        tail = "".join(resp.iter_text())
+    assert "event: run_started" not in tail
+    assert "event: run_finished" in tail
 
+
+def test_async_run_returns_immediately_and_lists_in_summaries():
+    with patch("app.main.submit_run") as submit:
+        resp = client.post("/runs", json={"task_description": "Write solve() returning 42"})
+    assert resp.status_code == 202
+    run_id = resp.json()["run_id"]
+    submit.assert_called_once()
+    assert client.get(f"/runs/{run_id}").json()["final_status"] == "queued"
+
+    page = client.get("/runs", params={"q": run_id}).json()
+    assert page["total"] == 1
+    assert page["items"][0]["run_id"] == run_id
+    assert "attempts" not in page["items"][0]
+
+
+def test_runs_listing_paginates_and_filters():
+    for _ in range(3):
+        run_pipeline(["def solve(): return 42"], [passed()])
+    page = client.get("/runs", params={"page_size": 2, "status": "success"}).json()
+    assert len(page["items"]) == 2
+    assert page["total"] >= 3
+    assert all(item["final_status"] == "success" for item in page["items"])
+    assert client.get("/runs", params={"status": "bogus"}).status_code == 422

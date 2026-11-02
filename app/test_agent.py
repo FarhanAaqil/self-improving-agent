@@ -1,16 +1,16 @@
-from groq import Groq
+from app import llm
 
-from app.config import GROQ_API_KEY, MODEL
+SPEC_TESTS_PROMPT = """You are a senior QA engineer writing a spec for code that does not exist yet.
 
-_default_client: Groq | None = None
-
-
-def _get_client() -> Groq:
-    global _default_client
-    if _default_client is None:
-        _default_client = Groq(api_key=GROQ_API_KEY)
-    return _default_client
-
+Write plain Python test functions from the task description alone:
+- Name each test `test_<behaviour>` and use bare `assert` statements with a short message.
+- 4 to 8 focused tests: the main behaviour plus real edge cases the task implies.
+- Use exactly the function/class names the task states. If the task names none, pick one
+  clear, conventional name and use it consistently.
+- No imports of pytest, no test runner, no `if __name__` block, no implementation.
+  The solution will already be defined in the same module when the tests run.
+- Only standard library imports, and only if needed.
+Return ONLY the Python test code."""
 
 TEST_AGENT_PROMPT = """You are a senior QA engineer and Python test specialist.
 Your task is to write clean, complete unit tests using pytest for the given Python code.
@@ -22,6 +22,29 @@ Requirements:
 - Return ONLY runnable Python code. No markdown fences, no explanations, no backticks."""
 
 
+def generate_spec_tests(
+    task: str,
+    client_override=None,
+    model_override: str | None = None,
+    feedback: str | None = None,
+) -> str:
+    """Write tests from the task statement before any code exists (test-first repair loop)."""
+    user = f"Task:\n{task}"
+    if feedback:
+        user += f"\n\nA previous version of these tests was judged wrong:\n{feedback}\nWrite corrected tests."
+    raw = llm.chat(
+        [
+            {"role": "system", "content": SPEC_TESTS_PROMPT},
+            {"role": "user", "content": user},
+        ],
+        model=model_override,
+        temperature=0.2,
+        max_tokens=1200,
+        client=client_override,
+    )
+    return llm.clean_code(raw)
+
+
 def generate_unit_tests(
     task: str,
     code: str,
@@ -29,9 +52,6 @@ def generate_unit_tests(
     model_override: str | None = None,
 ) -> str:
     """Take approved code and task, generate unit tests, and return them as a string."""
-    client = client_override or _get_client()
-    model = model_override or MODEL
-
     prompt = f"""Task:
 {task}
 
@@ -40,27 +60,14 @@ Approved Python Code:
 
 Write standalone pytest unit tests testing this code."""
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+    raw = llm.chat(
+        [
             {"role": "system", "content": TEST_AGENT_PROMPT},
             {"role": "user", "content": prompt},
         ],
+        model=model_override,
         temperature=0.2,
         max_tokens=1500,
+        client=client_override,
     )
-
-    raw = response.choices[0].message.content.strip()
-    return _clean_code(raw)
-
-
-def _clean_code(raw: str) -> str:
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].startswith("```"):
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    return text
+    return llm.clean_code(raw)

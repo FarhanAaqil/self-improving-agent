@@ -1,96 +1,77 @@
-"""Generate README benchmark table from evaluation result JSONs.
+"""Write the latest official, sandboxed benchmark result into README.md.
 
-Reads the latest or specified evaluation JSON file in results/ and updates the
-markdown table in README.md between the benchmark markers:
-<!-- BENCHMARK_TABLE_START -->
-<!-- BENCHMARK_TABLE_END -->
+The table lives between <!-- BENCHMARK_TABLE_START --> and <!-- BENCHMARK_TABLE_END -->.
+Only results that ran in the Docker sandbox on the official HumanEval tests are used.
 """
 
 import argparse
+import glob
 import json
-import sys
 from pathlib import Path
 
 START_MARKER = "<!-- BENCHMARK_TABLE_START -->"
 END_MARKER = "<!-- BENCHMARK_TABLE_END -->"
 
 
-def find_latest_results_file(results_dir: Path) -> Path | None:
-    """Find the most recent humaneval results json file in results_dir."""
-    files = sorted(results_dir.glob("humaneval_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+def find_latest(results_dir: Path) -> dict | None:
+    candidates = []
+    for path in glob.glob(str(results_dir / "*.json")):
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if data.get("suite") == "official" and data.get("sandboxed"):
+            candidates.append(data)
+    return max(candidates, key=lambda d: d.get("run_at", ""), default=None)
 
 
 def format_table(data: dict) -> str:
-    """Format evaluation metrics into a Markdown table."""
-    pass_at_1 = data.get("pass_at_1", 0.0)
-    pass_at_5 = data.get("pass_at_5", 0.0)
-    avg_attempts = data.get("avg_attempts", 1.0)
-    avg_latency = data.get("avg_latency_ms", 0.0)
+    agent, base = data["agent"], data["baseline"]
+    k = agent["k"]
+    return "\n".join([
+        f"Official HumanEval, {data['total_problems']} problems, `{data['model']}`, "
+        f"run {data['date']} in the Docker sandbox. Brackets show the 95% confidence interval.",
+        "",
+        "| Metric | Result |",
+        "|---|---|",
+        f"| Baseline pass@1 (single shot, no feedback) | {base['pass_at_1']:.1f}% [{base['ci95'][0]}–{base['ci95'][1]}] |",
+        f"| Agent pass@1 (first attempt) | {agent['pass_at_1']:.1f}% |",
+        f"| Agent solve@{k} (with repair) | {agent['solve_at_k']:.1f}% [{agent['ci95'][0]}–{agent['ci95'][1]}] |",
+        f"| Gain from repair | {data['repair_gain_pct']:+.1f} pts |",
+        f"| Average attempts | {agent['avg_attempts']:.2f} |",
+    ])
 
-    rows = [
-        "| Metric | Self-Improving Agent | Baseline (Zero-Shot) |",
-        "|---|---|---|",
-        f"| pass@1 | {pass_at_1:.1f}% | 68.0% (single-pass) |",
-        f"| pass@5 | {pass_at_5:.1f}% | 68.0% (no repair) |",
-        f"| Avg repair attempts | {avg_attempts:.2f} | 1.0 (no repair) |",
-        f"| Avg latency | {avg_latency:.1f} ms | ~50 ms |",
-    ]
-    return "\n".join(rows)
 
-
-def update_readme(readme_path: Path, table_md: str) -> bool:
-    """Replace content between markers in readme_path with table_md."""
-    if not readme_path.exists():
-        print(f"Error: {readme_path} not found.", file=sys.stderr)
+def update_readme(readme: Path, table: str) -> bool:
+    text = readme.read_text(encoding="utf-8")
+    if START_MARKER not in text or END_MARKER not in text:
+        print("Benchmark markers not found in README.")
         return False
-
-    content = readme_path.read_text(encoding="utf-8")
-    start_idx = content.find(START_MARKER)
-    end_idx = content.find(END_MARKER)
-
-    if start_idx == -1 or end_idx == -1 or start_idx >= end_idx:
-        print(f"Error: Markers '{START_MARKER}' and '{END_MARKER}' not found in {readme_path}.", file=sys.stderr)
+    head, rest = text.split(START_MARKER, 1)
+    _, tail = rest.split(END_MARKER, 1)
+    new = f"{head}{START_MARKER}\n{table}\n{END_MARKER}{tail}"
+    if new == text:
         return False
-
-    new_section = f"{START_MARKER}\n{table_md}\n{END_MARKER}"
-    updated_content = content[:start_idx] + new_section + content[end_idx + len(END_MARKER):]
-
-    readme_path.write_text(updated_content, encoding="utf-8")
-    print(f"Successfully updated {readme_path} with benchmark metrics.")
+    readme.write_text(new, encoding="utf-8")
     return True
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate benchmark table for README from eval results.")
-    parser.add_argument("--results-file", type=Path, default=None, help="Path to evaluation JSON result file.")
-    parser.add_argument("--readme-path", type=Path, default=Path("README.md"), help="Path to README.md.")
-    parser.add_argument("--update", action="store_true", default=True, help="Update README.md in-place.")
-    parser.add_argument("--dry-run", action="store_true", help="Print table without updating README.")
-
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--results-dir", type=Path, default=Path("results"))
+    parser.add_argument("--readme-path", type=Path, default=Path("README.md"))
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    results_file = args.results_file
-    if not results_file:
-        results_dir = Path("results")
-        results_file = find_latest_results_file(results_dir)
-        if not results_file:
-            print(f"No humaneval_*.json found in {results_dir}.", file=sys.stderr)
-            sys.exit(1)
-
-    print(f"Reading evaluation data from: {results_file}")
-    with open(results_file, encoding="utf-8") as f:
-        data = json.load(f)
-
-    table_md = format_table(data)
-    print("\nGenerated Markdown Table:\n")
-    print(table_md)
-    print()
-
-    if not args.dry_run and args.update:
-        success = update_readme(args.readme_path, table_md)
-        if not success:
-            sys.exit(1)
+    data = find_latest(args.results_dir)
+    if not data:
+        print("No official sandboxed results found; README left unchanged.")
+        return
+    table = format_table(data)
+    if args.dry_run:
+        print(table)
+        return
+    print("README updated." if update_readme(args.readme_path, table) else "README already current.")
 
 
 if __name__ == "__main__":

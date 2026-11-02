@@ -1,16 +1,4 @@
-from groq import Groq
-
-from app.config import GROQ_API_KEY, MODEL
-
-_default_client: Groq | None = None
-
-
-def _get_client() -> Groq:
-    global _default_client
-    if _default_client is None:
-        _default_client = Groq(api_key=GROQ_API_KEY)
-    return _default_client
-
+from app import llm
 
 SECURITY_AUDIT_PROMPT = """You are a senior application security auditor reviewing Python code.
 Analyze the code for software security vulnerabilities such as:
@@ -41,9 +29,6 @@ def audit_code_security(
     model_override: str | None = None,
 ) -> str:
     """Perform an LLM code review security audit and return 'SECURE' or tagged issues."""
-    client = client_override or _get_client()
-    model = model_override or MODEL
-
     prompt = f"""Task:
 {task}
 
@@ -52,17 +37,16 @@ Python Code to audit:
 
 Provide your security audit."""
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+    raw = llm.chat(
+        [
             {"role": "system", "content": SECURITY_AUDIT_PROMPT},
             {"role": "user", "content": prompt},
         ],
+        model=model_override,
         temperature=0.1,
         max_tokens=800,
+        client=client_override,
     )
-
-    raw = response.choices[0].message.content.strip()
     return _clean_security_output(raw)
 
 

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { listRuns } from '../api/client'
-import type { RunOut } from '../api/types'
+import type { RunPage } from '../api/types'
 import StatusBadge from '../components/StatusBadge'
 
 export default function RunHistory() {
@@ -21,13 +21,13 @@ export default function RunHistory() {
   const [pageSize, setPageSize] = useState(10)
 
   const {
-    data: runs = [],
+    data: page,
     isLoading,
     isError,
     error,
     refetch,
     isFetching,
-  } = useQuery<RunOut[]>({
+  } = useQuery<RunPage>({
     queryKey: ['runs'],
     queryFn: () => listRuns(100),
     refetchInterval: 10000,
@@ -37,12 +37,13 @@ export default function RunHistory() {
     setCurrentPage(1)
   }, [statusFilter, searchQuery, pageSize])
 
+  const runs = page?.items ?? []
   const filteredRuns = runs.filter((run) => {
     const matchesStatus =
       statusFilter === 'all' ||
       (statusFilter === 'success' && run.final_status === 'success') ||
       (statusFilter === 'failed' &&
-        (run.final_status === 'failed' || run.final_status === 'max_retries_exceeded')) ||
+        ['failed', 'max_retries_exceeded', 'early_stopped'].includes(run.final_status)) ||
       (statusFilter === 'running' && run.final_status === 'running')
 
     const matchesSearch =
@@ -212,11 +213,11 @@ export default function RunHistory() {
               </thead>
               <tbody className="divide-y divide-border">
                 {paginatedRuns.map((run, idx) => {
-                  const attempts = run.attempts ?? []
-                  const passingAttempt = attempts.find((a) => a.success)
-                  const lastAttempt = attempts[attempts.length - 1]
+                  // Scores are stored 0-1; the table shows them out of 10
                   const qualityScore =
-                    passingAttempt?.quality_overall_score ?? lastAttempt?.quality_overall_score
+                    run.quality_score !== null && run.quality_score !== undefined
+                      ? run.quality_score * 10
+                      : null
 
                   return (
                     <tr
@@ -237,8 +238,10 @@ export default function RunHistory() {
                         </div>
                       </td>
                       <td className="py-3 px-4 font-mono">
-                        <span className="text-ink font-bold">{attempts.length}</span>
-                        <span className="text-ink-tertiary">/{run.total_attempts || 3}</span>
+                        <span className="text-ink font-bold">{run.total_attempts}</span>
+                        {run.passed_on_attempt && (
+                          <span className="text-ink-tertiary"> (passed #{run.passed_on_attempt})</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-mono">
                         {qualityScore !== null && qualityScore !== undefined ? (
