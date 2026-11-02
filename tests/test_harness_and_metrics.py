@@ -105,3 +105,24 @@ def test_list_memories_puts_pinned_first_then_newest():
     }
     items = list_memories(collection=coll)["items"]
     assert [i["id"] for i in items] == ["pinned", "new", "old"]
+
+
+def test_unopenable_memory_store_degrades_to_503_not_500():
+    """An old or corrupt vector store must never crash requests or runs."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    from app import memory
+    from app.main import app
+
+    def boom(*args, **kwargs):
+        raise ValueError("Could not connect to tenant default_tenant")
+
+    with patch("app.main.MEMORY_ENABLED", True), patch("chromadb.PersistentClient", boom):
+        memory._client = memory._collection = None
+        resp = TestClient(app).get("/memory/search", params={"q": "anything at all"})
+        assert resp.status_code == 503
+        assert "could not be opened" in resp.json()["detail"]
+        assert "ValueError" in resp.json()["detail"]
+    memory._client = memory._collection = None

@@ -21,6 +21,10 @@ from app.config import (
 )
 
 MEMORY_COLLECTION = "agent_memory_v2"
+
+
+class MemoryUnavailable(RuntimeError):
+    """The vector store can't be opened; callers degrade instead of failing the request."""
 _FIELD_LIMITS = {"task": 400, "code": 1200, "error": 600, "lesson": 600}
 
 _client: Any = None
@@ -47,17 +51,24 @@ def _get_collection(collection_override=None):
 
     global _client, _collection
     if _collection is None:
-        import chromadb
-        from chromadb.utils import embedding_functions
+        try:
+            import chromadb
+            from chromadb.utils import embedding_functions
 
-        if _client is None:
-            os.makedirs(MEMORY_DIR, exist_ok=True)
-            _client = chromadb.PersistentClient(path=MEMORY_DIR)
-        _collection = _client.get_or_create_collection(
-            name=MEMORY_COLLECTION,
-            embedding_function=embedding_functions.DefaultEmbeddingFunction(),
-            metadata={"hnsw:space": "cosine"},
-        )
+            if _client is None:
+                os.makedirs(MEMORY_DIR, exist_ok=True)
+                _client = chromadb.PersistentClient(path=MEMORY_DIR)
+            _collection = _client.get_or_create_collection(
+                name=MEMORY_COLLECTION,
+                embedding_function=embedding_functions.DefaultEmbeddingFunction(),
+                metadata={"hnsw:space": "cosine"},
+            )
+        except Exception as e:
+            _client = None
+            raise MemoryUnavailable(
+                f"The memory store at {MEMORY_DIR} could not be opened ({type(e).__name__}). "
+                "If it came from an older version, point MEMORY_DIR at a new folder."
+            ) from e
     return _collection
 
 

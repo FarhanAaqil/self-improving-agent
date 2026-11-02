@@ -13,7 +13,13 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 from app import db, llm
@@ -33,6 +39,7 @@ from app.config import (
 )
 from app.generator import generate_code
 from app.jobs import recover_interrupted_runs, submit_run
+from app.memory import MemoryUnavailable
 from app.observability import configure_logging, metrics, new_request_id, request_id
 from app.pipeline import RunSpec, execute_run
 from app.sandbox import SANDBOX_IMAGE, _is_docker_available, docker_run_args, run_code
@@ -144,6 +151,12 @@ async def add_security_headers(request: Request, call_next):
     ) or _wants_app_shell(request):
         response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
+
+
+@app.exception_handler(MemoryUnavailable)
+async def memory_unavailable_handler(request: Request, exc: MemoryUnavailable):
+    logger.error("Memory store unavailable: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 def _run_out(run: dict) -> RunOut:
