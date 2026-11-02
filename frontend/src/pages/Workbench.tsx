@@ -1,8 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowRight, Brain, FlaskConical, Play, ShieldCheck, Sliders, Wrench } from 'lucide-react'
+import { ArrowRight, Brain, FlaskConical, Play, ShieldCheck, Sliders, Swords, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { listRuns, searchMemory, startRun } from '../api/client'
+import { listRuns, searchMemory, startComparison, startRun } from '../api/client'
 import { ErrorNote, Kbd, PageHeader, StatusPill } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences } from '../hooks/usePreferences'
@@ -72,6 +72,7 @@ export default function Workbench() {
   const [attempts, setAttempts] = useState(prefs.defaultAttempts)
   const [skip, setSkip] = useState<string[]>([])
   const [showSettings, setShowSettings] = useState(false)
+  const [race, setRace] = useState<string[]>([])
 
   const query = useDebounced(task.trim(), 600)
   const { data: recall } = useQuery({
@@ -85,15 +86,18 @@ export default function Workbench() {
 
   const { data: recent } = useQuery({ queryKey: ['runs-recent'], queryFn: () => listRuns({ pageSize: 5 }) })
 
+  const racing = race.length >= 2
   const run = useMutation({
-    mutationFn: () =>
-      startRun({
-        task_description: task.trim(),
-        model: model || health?.default_model || null,
-        max_attempts: attempts,
-        skip_agents: skip,
-      }),
-    onSuccess: (res) => navigate(`/runs/${res.run_id}`),
+    mutationFn: async () => {
+      const base = { task_description: task.trim(), max_attempts: attempts, skip_agents: skip }
+      if (racing) {
+        const res = await startComparison({ ...base, models: race })
+        return `/compare/${res.group_id}`
+      }
+      const res = await startRun({ ...base, model: model || health?.default_model || null })
+      return `/runs/${res.run_id}`
+    },
+    onSuccess: (to) => navigate(to),
   })
 
   const ready = task.trim().length >= 5 && !run.isPending
@@ -130,7 +134,7 @@ export default function Workbench() {
               <Sliders className="h-3.5 w-3.5" aria-hidden />
               settings
             </button>
-            <span>{model || health?.default_model || 'default model'} · {attempts} attempts</span>
+            <span>{racing ? `${race.length} models racing` : model || health?.default_model || 'default model'} · {attempts} attempts</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden font-mono text-[11px] text-ink-muted sm:inline">
@@ -138,7 +142,7 @@ export default function Workbench() {
             </span>
             <button type="button" onClick={submit} disabled={!ready || health?.docker_available === false} className="btn-primary">
               <Play className="h-3.5 w-3.5 fill-current" aria-hidden />
-              {run.isPending ? 'starting…' : 'run it'}
+              {run.isPending ? 'starting…' : racing ? `race ${race.length} models` : 'run it'}
             </button>
           </div>
         </div>
@@ -160,6 +164,28 @@ export default function Workbench() {
               <span className="eyebrow">max attempts: <span className="text-accent-ink">{attempts}</span></span>
               <input type="range" min={1} max={10} value={attempts} onChange={(e) => setAttempts(Number(e.target.value))} className="mt-3 w-full accent-[rgb(var(--accent))]" />
             </label>
+            {(health?.models?.length ?? 0) >= 2 && (
+              <fieldset className="md:col-span-2">
+                <legend className="eyebrow flex items-center gap-1.5"><Swords className="h-3 w-3" aria-hidden /> race models (pick 2 to 4)</legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(health?.models ?? []).map((m) => {
+                    const on = race.includes(m)
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={!on && race.length >= 4}
+                        onClick={() => setRace((r) => (on ? r.filter((x) => x !== m) : [...r, m]))}
+                        className={`chip px-2.5 py-1 disabled:opacity-40 ${on ? 'border-accent bg-accent-subtle text-accent-ink' : 'border-border bg-surface text-ink-secondary'}`}
+                      >
+                        {m}
+                      </button>
+                    )
+                  })}
+                </div>
+              </fieldset>
+            )}
             <fieldset className="md:col-span-2">
               <legend className="eyebrow">agents</legend>
               <div className="mt-2 flex flex-wrap gap-2">

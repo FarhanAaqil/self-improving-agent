@@ -7,14 +7,16 @@ import {
   FlaskConical,
   GitFork,
   GitPullRequest,
+  Link2,
   Loader2,
+  ScrollText,
   Terminal,
   XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getRun, openRunPr } from '../api/client'
-import type { AttemptOut, Diagnosis, PrResponse, QualityReport, RunEvent, TestReport } from '../api/types'
+import { getCertificate, getRun, openRunPr, shareRun, unshareRun } from '../api/client'
+import type { AttemptOut, Diagnosis, PrResponse, QualityReport, RunEvent, ShareLink, TestReport } from '../api/types'
 import CodeBlock, { CopyButton } from '../components/CodeBlock'
 import DiffView from '../components/DiffView'
 import QualityRadar from '../components/QualityRadar'
@@ -113,6 +115,8 @@ export default function RunTheater() {
 
   const [pr, setPr] = useState<PrResponse | null>(null)
   const [prBusy, setPrBusy] = useState(false)
+  const [share, setShare] = useState<ShareLink | null>(null)
+  const [shareError, setShareError] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -133,12 +137,35 @@ export default function RunTheater() {
 
   const finalCode = run.final_code ?? passing?.generated_code ?? code ?? ''
   const tokens = (run.prompt_tokens ?? 0) + (run.completion_tokens ?? 0)
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([finalCode], { type: 'text/x-python' }))
-    const a = Object.assign(document.createElement('a'), { href: url, download: `${run.run_id}.py` })
+  const saveFile = (content: string, name: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: name })
     a.click()
     URL.revokeObjectURL(url)
   }
+  const download = () => saveFile(finalCode, `${run.run_id}.py`, 'text/x-python')
+  const downloadCertificate = async () => {
+    try {
+      const cert = await getCertificate(run.run_id)
+      saveFile(JSON.stringify(cert, null, 2), `${run.run_id}.certificate.json`, 'application/json')
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : 'Could not export the certificate.')
+    }
+  }
+  const toggleShare = async () => {
+    setShareError(null)
+    try {
+      if (share) {
+        await unshareRun(run.run_id)
+        setShare(null)
+      } else {
+        setShare(await shareRun(run.run_id))
+      }
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : 'Sharing failed.')
+    }
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
   return (
     <div className="space-y-6">
@@ -352,6 +379,12 @@ export default function RunTheater() {
                 <button type="button" onClick={() => navigate('/', { state: { task: run.task_description } })} className="btn-secondary">
                   <GitFork className="h-3.5 w-3.5" aria-hidden /> fork & edit
                 </button>
+                <button type="button" onClick={downloadCertificate} className="btn-secondary">
+                  <ScrollText className="h-3.5 w-3.5" aria-hidden /> certificate
+                </button>
+                <button type="button" onClick={toggleShare} className="btn-secondary" aria-pressed={Boolean(share)}>
+                  <Link2 className="h-3.5 w-3.5" aria-hidden /> {share ? 'stop sharing' : 'share link'}
+                </button>
                 {health?.github_configured && (
                   <button
                     type="button"
@@ -366,6 +399,19 @@ export default function RunTheater() {
                   </button>
                 )}
               </div>
+              {share && (
+                <div className="space-y-2 border border-cyan/40 bg-cyan-subtle p-3 font-mono text-[11px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <a href={share.url} target="_blank" rel="noreferrer" className="truncate text-cyan underline">{origin}{share.url}</a>
+                    <CopyButton text={`${origin}${share.url}`} label="link" />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <img src={share.badge} alt="verification badge" className="h-5" />
+                    <CopyButton text={`[![verified](${origin}${share.badge})](${origin}${share.url})`} label="badge markdown" />
+                  </div>
+                </div>
+              )}
+              {shareError && <ErrorNote error={new Error(shareError)} />}
               {pr?.pr_url && <a href={pr.pr_url} target="_blank" rel="noreferrer" className="font-mono text-xs text-accent-ink underline">PR #{pr.pr_number} is open →</a>}
               {pr?.status === 'error' && <ErrorNote error={new Error(pr.error ?? 'Could not open the PR.')} />}
             </div>

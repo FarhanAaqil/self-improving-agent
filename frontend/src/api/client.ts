@@ -20,10 +20,17 @@ import type {
   RunPage,
   SandboxConfig,
   BenchmarkResult,
+  Certificate,
+  Comparison,
+  Improvement,
+  ShareLink,
+  SharedRun,
+  Usage,
 } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 const API_KEY_STORAGE = 'agent_api_key'
+const GROQ_KEY_STORAGE = 'agent_groq_key'
 
 export class ApiError extends Error {
   status: number
@@ -55,13 +62,35 @@ export function setStoredApiKey(key: string | null): void {
   }
 }
 
+// The caller's own Groq key, if they chose to bring one. Session-only, like the API key.
+export function getStoredGroqKey(): string | null {
+  try {
+    return sessionStorage.getItem(GROQ_KEY_STORAGE)
+  } catch {
+    return null
+  }
+}
+
+export function setStoredGroqKey(key: string | null): void {
+  try {
+    if (key) sessionStorage.setItem(GROQ_KEY_STORAGE, key)
+    else sessionStorage.removeItem(GROQ_KEY_STORAGE)
+  } catch {
+    // storage blocked
+  }
+}
+
 export function isAuthError(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 401 || err.status === 503)
 }
 
 function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
   const apiKey = getStoredApiKey()
-  return apiKey ? { 'X-API-Key': apiKey } : {}
+  const groqKey = getStoredGroqKey()
+  if (apiKey) headers['X-API-Key'] = apiKey
+  if (groqKey) headers['X-Groq-Key'] = groqKey
+  return headers
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -170,3 +199,14 @@ export const getLatestEval = () => request<EvalResultOut>('/eval/latest')
 export const getEvalHistory = () => request<{ items: BenchmarkResult[] }>('/eval/history')
 export const getEvalStatus = (evalId: string) => request<EvalStatus>(`/eval/status/${encodeURIComponent(evalId)}`)
 export const triggerEval = (req: EvalRunRequest) => post<EvalRunOut>('/eval/run', req)
+
+// ── Compare, share, certificates, insight ──
+export const startComparison = (req: GenerateAndRepairRequest & { models: string[] }) =>
+  post<{ group_id: string; runs: { run_id: string; model: string }[] }>('/compare', req)
+export const getComparison = (groupId: string) => request<Comparison>(`/compare/${encodeURIComponent(groupId)}`)
+export const getCertificate = (runId: string) => request<Certificate>(`/runs/${encodeURIComponent(runId)}/certificate`)
+export const shareRun = (runId: string) => post<ShareLink>(`/runs/${encodeURIComponent(runId)}/share`)
+export const unshareRun = (runId: string) => request<{ shared: boolean }>(`/runs/${encodeURIComponent(runId)}/share`, { method: 'DELETE' })
+export const getSharedRun = (token: string) => request<SharedRun>(`/shared/${encodeURIComponent(token)}`)
+export const getUsage = () => request<Usage>('/usage')
+export const getImprovement = (days = 60) => request<Improvement>(`/stats/improvement?days=${days}`)
