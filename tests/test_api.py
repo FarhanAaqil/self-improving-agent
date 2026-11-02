@@ -219,3 +219,18 @@ def test_rate_limiter_blocks_bursts():
         limiter.check("client")
     assert exc.value.status_code == 429
     limiter.check("someone-else")
+
+
+def test_browser_navigation_gets_the_app_while_fetch_gets_json():
+    import pytest
+
+    from app.main import _FRONTEND_DIST
+
+    if not (_FRONTEND_DIST / "index.html").exists():
+        pytest.skip("frontend/dist not built")
+    page = client.get("/runs/run_whatever", headers={"Accept": "text/html,application/xhtml+xml"})
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    api = client.get("/runs/run_whatever", headers={"Accept": "*/*"})
+    assert api.status_code == 404 and api.headers["content-type"].startswith("application/json")
+    # API docs are HTML too, but must stay Swagger, not the React shell
+    assert "swagger" in client.get("/docs", headers={"Accept": "text/html"}).text.lower()

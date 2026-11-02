@@ -79,9 +79,28 @@ app.add_middleware(
 )
 
 
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+_API_DOC_PATHS = ("/docs", "/redoc", "/openapi.json", "/assets/")
+
+
+def _wants_app_shell(request: Request) -> bool:
+    """A browser navigation (Accept: text/html) gets the React app, even on paths like
+    /runs/{id} or /memory that are also API routes. fetch() calls never send text/html."""
+    return (
+        request.method == "GET"
+        and "text/html" in request.headers.get("accept", "")
+        and not request.url.path.startswith(_API_DOC_PATHS)
+        and Path(request.url.path).suffix == ""
+        and (_FRONTEND_DIST / "index.html").exists()
+    )
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
+    if _wants_app_shell(request):
+        response = FileResponse(str(_FRONTEND_DIST / "index.html"))
+    else:
+        response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -568,8 +587,6 @@ def run_eval_endpoint(req: EvalRunRequest):
 
 
 # ── Frontend Static Files Mount ──────────────────────────────
-_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-
 if _FRONTEND_DIST.exists():
     _assets_dir = _FRONTEND_DIST / "assets"
     if _assets_dir.exists():
