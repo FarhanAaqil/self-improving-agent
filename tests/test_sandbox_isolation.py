@@ -10,7 +10,7 @@ import pytest
 
 from app.sandbox import _is_docker_available, run_code
 
-FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "adversarial")
+FIXTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "adversarial")
 
 OOM_KILLED = 137
 
@@ -74,3 +74,20 @@ def test_runs_unprivileged():
 def test_outlive_timeout_killed():
     result = _attack("outlive_timeout.py", timeout=2)
     assert "timed out" in (result.get("error") or "").lower()
+
+
+@pytest.mark.sandbox
+def test_attack_endpoint_runs_curated_scripts_only():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    client = TestClient(app)
+    names = {a["name"] for a in client.get("/sandbox/attacks").json()["items"]}
+    assert {"fork_bomb", "tmp_exec", "privilege"} <= names
+
+    result = client.post("/sandbox/attacks/privilege").json()
+    assert result["blocked"] is True and result["sandboxed"] is True
+    # Encoded slashes never reach the handler: no route matches, so nothing runs
+    assert client.post("/sandbox/attacks/..%2F..%2Fetc%2Fpasswd").status_code in (404, 405)
+    assert client.post("/sandbox/attacks/not_real").status_code == 404

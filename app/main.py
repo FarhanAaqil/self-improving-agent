@@ -157,6 +157,30 @@ def sandbox_config():
     }
 
 
+@app.get("/sandbox/attacks", tags=["System"])
+def sandbox_attacks():
+    from app.attacks import list_attacks
+
+    return {"items": list_attacks()}
+
+
+@app.post(
+    "/sandbox/attacks/{name}",
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
+    tags=["System"],
+)
+def sandbox_attack(name: str):
+    """Run one of the curated adversarial scripts against the live sandbox."""
+    from app.attacks import run_attack
+
+    if not _is_docker_available():
+        raise HTTPException(status_code=503, detail="Docker is not available on this server.")
+    result = run_attack(name)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Unknown attack '{name}'.")
+    return result
+
+
 # ── Generate only ────────────────────────────────────────────
 
 @app.post(
