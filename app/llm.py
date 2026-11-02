@@ -8,7 +8,7 @@ from typing import Any
 
 from groq import Groq
 
-from app.config import GROQ_API_KEY, MODEL
+from app.config import FAKE_LLM, GROQ_API_KEY, MODEL
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.S | re.I)
 
@@ -78,6 +78,17 @@ def chat(
     client: Any = None,
 ) -> str:
     """Send a chat completion and return the stripped text content."""
+    if FAKE_LLM and client is None:
+        from app import fake_llm
+
+        reply = fake_llm.respond(messages)
+        bucket = _usage.get()
+        if bucket is not None:
+            bucket["prompt_tokens"] += sum(len(m["content"]) for m in messages) // 4
+            bucket["completion_tokens"] += len(reply) // 4
+            bucket["calls"] += 1
+        return reply
+
     response = (client or get_client()).chat.completions.create(
         model=model or MODEL,
         messages=messages,

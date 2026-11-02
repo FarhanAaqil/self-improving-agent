@@ -89,7 +89,7 @@ def generate_code(
         except Exception:
             memory_context = ""
 
-    _client = client or llm.get_client(api_key)
+    _client = client or (llm.get_client(api_key) if api_key else None)
     messages = build_messages(task, error, attempt, memory_context, previous_code, tests, diagnosis)
 
     try:
