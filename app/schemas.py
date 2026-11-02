@@ -103,6 +103,12 @@ class AttemptOut(BaseModel):
     security_audit: str | None = None
     quality_overall_score: float | None = None
     quality_report_json: str | None = None
+    tests_passed: int | None = None
+    tests_total: int | None = None
+    coverage: float | None = None
+    test_report_json: str | None = None
+    diagnosis_json: str | None = None
+    sandboxed: bool | None = None
     timestamp: str | datetime | None = None
 
 
@@ -112,7 +118,46 @@ class RunOut(BaseModel):
     created_at: str | datetime | None = None
     final_status: str
     total_attempts: int
+    model_name: str | None = None
+    memories: list[dict[str, Any]] = []
+    spec_tests: str | None = None
+    final_code: str | None = None
+    docs_applied: bool | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    finished_at: str | datetime | None = None
+    group_id: str | None = None
     attempts: list[AttemptOut] = []
+
+
+class RunAccepted(BaseModel):
+    run_id: str
+    status: str = "queued"
+    events_url: str
+
+
+class RunSummary(BaseModel):
+    run_id: str
+    task_description: str
+    created_at: str | datetime | None = None
+    final_status: str
+    total_attempts: int
+    model_name: str | None = None
+    passed_on_attempt: int | None = None
+    quality_score: float | None = None
+    total_latency_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    finished_at: str | datetime | None = None
+    group_id: str | None = None
+
+
+class RunPage(BaseModel):
+    items: list[RunSummary]
+    total: int
+    page: int
+    page_size: int
+    status_counts: dict[str, int] = {}
 
 
 class EvalResultOut(BaseModel):

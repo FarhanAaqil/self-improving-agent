@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from collections.abc import Iterator
@@ -71,27 +72,61 @@ def init_db(db_path: str = DB_PATH) -> None:
             raw_json TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS run_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+            type TEXT NOT NULL,
+            payload TEXT,
+            created_at TIMESTAMP NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_events_run ON run_events(run_id, event_id);
         CREATE INDEX IF NOT EXISTS idx_attempts_run_id ON attempts(run_id);
         CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_attempts_timestamp ON attempts(timestamp DESC);
         """)
 
-        # Auto-migrate table columns if upgrading existing database
-        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(attempts)").fetchall()}
-        if "critique_confidence" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN critique_confidence REAL;")
-        if "critique_reasoning" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN critique_reasoning TEXT;")
-        if "generated_tests" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN generated_tests TEXT;")
-        if "performance_notes" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN performance_notes TEXT;")
-        if "security_audit" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN security_audit TEXT;")
-        if "quality_overall_score" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN quality_overall_score REAL;")
-        if "quality_report_json" not in existing_cols:
-            conn.execute("ALTER TABLE attempts ADD COLUMN quality_report_json TEXT;")
+        _add_missing_columns(conn, "attempts", ATTEMPT_COLUMNS)
+        _add_missing_columns(conn, "runs", RUN_COLUMNS)
+
+
+# Columns added after the first release. New databases and old ones converge on the same shape.
+ATTEMPT_COLUMNS = {
+    "critique_confidence": "REAL",
+    "critique_reasoning": "TEXT",
+    "generated_tests": "TEXT",
+    "performance_notes": "TEXT",
+    "security_audit": "TEXT",
+    "quality_overall_score": "REAL",
+    "quality_report_json": "TEXT",
+    "tests_passed": "INTEGER",
+    "tests_total": "INTEGER",
+    "coverage": "REAL",
+    "test_report_json": "TEXT",
+    "diagnosis_json": "TEXT",
+    "sandboxed": "BOOLEAN",
+}
+
+RUN_COLUMNS = {
+    "model_name": "TEXT",
+    "memories_json": "TEXT",
+    "spec_tests": "TEXT",
+    "final_code": "TEXT",
+    "docs_applied": "BOOLEAN",
+    "prompt_tokens": "INTEGER",
+    "completion_tokens": "INTEGER",
+    "finished_at": "TIMESTAMP",
+    "workspace": "TEXT DEFAULT 'default'",
+    "group_id": "TEXT",
+    "share_token": "TEXT",
+}
+
+
+def _add_missing_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, decl in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl};")
 
 
 def insert_run(
@@ -135,6 +170,21 @@ def update_run_status(
             )
 
 
+_RUN_UPDATABLE = {"final_status", "total_attempts"} | set(RUN_COLUMNS)
+
+
+def update_run(run_id: str, db_path: str = DB_PATH, **fields: Any) -> None:
+    """Update any whitelisted run columns. Unknown keys raise instead of silently vanishing."""
+    unknown = set(fields) - _RUN_UPDATABLE
+    if unknown:
+        raise ValueError(f"Unknown run fields: {sorted(unknown)}")
+    if not fields:
+        return
+    assignments = ", ".join(f"{k} = ?" for k in fields)
+    with get_connection(db_path) as conn:
+        conn.execute(f"UPDATE runs SET {assignments} WHERE run_id = ?", [*fields.values(), run_id])
+
+
 def insert_attempt(
     run_id: str,
     attempt_number: int,
@@ -155,25 +205,37 @@ def insert_attempt(
     quality_report_json: str | None = None,
     timestamp: datetime | None = None,
     db_path: str = DB_PATH,
+    **extra: Any,
 ) -> int:
-    now = (timestamp or datetime.now()).isoformat()
+    unknown = set(extra) - set(ATTEMPT_COLUMNS)
+    if unknown:
+        raise ValueError(f"Unknown attempt fields: {sorted(unknown)}")
+    row = {
+        "run_id": run_id,
+        "attempt_number": attempt_number,
+        "generated_code": generated_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "exit_code": exit_code,
+        "success": int(success),
+        "latency_ms": latency_ms,
+        "tokens_used": tokens_used,
+        "model_name": model_name,
+        "critique_confidence": critique_confidence,
+        "critique_reasoning": critique_reasoning,
+        "generated_tests": generated_tests,
+        "performance_notes": performance_notes,
+        "security_audit": security_audit,
+        "quality_overall_score": quality_overall_score,
+        "quality_report_json": quality_report_json,
+        "timestamp": (timestamp or datetime.now()).isoformat(),
+        **extra,
+    }
+    columns = ", ".join(row)
+    placeholders = ", ".join("?" * len(row))
     with get_connection(db_path) as conn:
         cursor = conn.execute(
-            """
-            INSERT INTO attempts (
-                run_id, attempt_number, generated_code, stdout, stderr,
-                exit_code, success, latency_ms, tokens_used, model_name,
-                critique_confidence, critique_reasoning, generated_tests, performance_notes,
-                security_audit, quality_overall_score, quality_report_json, timestamp
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id, attempt_number, generated_code, stdout, stderr,
-                exit_code, int(success), latency_ms, tokens_used, model_name,
-                critique_confidence, critique_reasoning, generated_tests, performance_notes,
-                security_audit, quality_overall_score, quality_report_json, now,
-            ),
+            f"INSERT INTO attempts ({columns}) VALUES ({placeholders})", list(row.values())
         )
         return cursor.lastrowid
 
@@ -320,3 +382,114 @@ def get_latest_eval_run(
                 "SELECT * FROM eval_runs ORDER BY run_at DESC LIMIT 1"
             ).fetchone()
         return dict(row) if row else None
+
+
+# ── Run summaries & events ───────────────────────────────────
+
+_SUMMARY_SQL = """
+    SELECT r.run_id, r.task_description, r.created_at, r.final_status, r.total_attempts,
+           r.model_name, r.prompt_tokens, r.completion_tokens, r.finished_at, r.group_id,
+           (SELECT MIN(a.attempt_number) FROM attempts a
+             WHERE a.run_id = r.run_id AND a.success = 1) AS passed_on_attempt,
+           (SELECT MAX(a.quality_overall_score) FROM attempts a
+             WHERE a.run_id = r.run_id) AS quality_score,
+           (SELECT COALESCE(SUM(a.latency_ms), 0) FROM attempts a
+             WHERE a.run_id = r.run_id) AS total_latency_ms
+    FROM runs r
+"""
+
+STATUS_GROUPS = {
+    "success": ("success",),
+    "failed": ("failed", "max_retries_exceeded", "early_stopped"),
+    "early_stopped": ("early_stopped",),
+    "running": ("running", "queued"),
+}
+
+
+def list_run_summaries(
+    page: int = 1,
+    page_size: int = 20,
+    q: str | None = None,
+    status: str | None = None,
+    workspace: str | None = None,
+    db_path: str = DB_PATH,
+) -> dict[str, Any]:
+    """Lightweight, server-side paginated run list (no generated code in the payload)."""
+    where, params = [], []
+    if q:
+        where.append("(r.run_id LIKE ? OR r.task_description LIKE ?)")
+        params += [f"%{q}%", f"%{q}%"]
+    if status and status in STATUS_GROUPS:
+        group = STATUS_GROUPS[status]
+        where.append(f"r.final_status IN ({','.join('?' * len(group))})")
+        params += list(group)
+    if workspace:
+        where.append("COALESCE(r.workspace, 'default') = ?")
+        params.append(workspace)
+    clause = f" WHERE {' AND '.join(where)}" if where else ""
+
+    with get_connection(db_path) as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM runs r{clause}", params).fetchone()[0]
+        rows = conn.execute(
+            f"{_SUMMARY_SQL}{clause} ORDER BY r.created_at DESC LIMIT ? OFFSET ?",
+            [*params, page_size, (page - 1) * page_size],
+        ).fetchall()
+        counts = {
+            row["final_status"]: row["n"]
+            for row in conn.execute(
+                f"SELECT final_status, COUNT(*) AS n FROM runs r{clause} GROUP BY final_status", params
+            )
+        }
+    return {
+        "items": [dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "status_counts": counts,
+    }
+
+
+def add_event(run_id: str, event_type: str, payload: dict | None = None, db_path: str = DB_PATH) -> int:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute(
+            "INSERT INTO run_events (run_id, type, payload, created_at) VALUES (?, ?, ?, ?)",
+            (run_id, event_type, json.dumps(payload or {}, default=str), datetime.now().isoformat()),
+        )
+        return cursor.lastrowid
+
+
+def get_events(run_id: str, after_id: int = 0, db_path: str = DB_PATH) -> list[dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT event_id, type, payload, created_at FROM run_events "
+            "WHERE run_id = ? AND event_id > ? ORDER BY event_id ASC",
+            (run_id, after_id),
+        ).fetchall()
+    return [
+        {**dict(r), "payload": json.loads(r["payload"]) if r["payload"] else {}}
+        for r in rows
+    ]
+
+
+def run_stats_by_day(days: int = 60, workspace: str | None = None, db_path: str = DB_PATH) -> list[dict]:
+    """Per-day counts used by the improvement-over-time chart."""
+    params: list[Any] = [f"-{int(days)} days"]
+    ws = ""
+    if workspace:
+        ws = " AND COALESCE(r.workspace, 'default') = ?"
+        params.append(workspace)
+    sql = f"""
+        SELECT substr(r.created_at, 1, 10) AS day,
+               COUNT(*) AS runs,
+               SUM(CASE WHEN r.final_status = 'success' THEN 1 ELSE 0 END) AS solved,
+               SUM(CASE WHEN EXISTS (SELECT 1 FROM attempts a WHERE a.run_id = r.run_id
+                        AND a.attempt_number = 1 AND a.success = 1) THEN 1 ELSE 0 END) AS first_try,
+               SUM(CASE WHEN r.memories_json IS NOT NULL AND r.memories_json != '[]'
+                        THEN 1 ELSE 0 END) AS used_memory,
+               AVG(r.total_attempts) AS avg_attempts
+        FROM runs r
+        WHERE r.created_at >= date('now', ?){ws}
+        GROUP BY day ORDER BY day ASC
+    """
+    with get_connection(db_path) as conn:
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
