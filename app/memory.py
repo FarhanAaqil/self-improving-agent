@@ -1,84 +1,101 @@
 # ── app/memory.py ───────────────────────────────────────────
 # Vector memory layer — ChromaDB.
-# Terminal failures are stored here and recalled as fenced reference data
-# (never as instructions) when a similar task comes in.
+#
+# Two kinds of memories:
+#   failure — a task that never passed: what was tried and how it broke
+#   fix     — a task that failed first and then passed: the error and the lesson
+# Recalled memories are shown to the generator as fenced reference data, never as
+# instructions. Embeddings use Chroma's bundled ONNX MiniLM model (no torch needed).
 
 import os
+import re
 import uuid
 from datetime import datetime
 from typing import Any
 
-import chromadb
-from chromadb.utils import embedding_functions
-
 from app.config import (
-    MEMORY_COLLECTION,
     MEMORY_DIR,
     MEMORY_MAX_CHARS,
     MEMORY_SIMILARITY_THRESHOLD,
     MEMORY_TOP_K,
 )
 
-_FIELD_LIMITS = {"task": 400, "code": 1200, "error": 600}
+MEMORY_COLLECTION = "agent_memory_v2"
+_FIELD_LIMITS = {"task": 400, "code": 1200, "error": 600, "lesson": 600}
+
+_client: Any = None
+_collection: Any = None
 
 
-def _trim(text: str, limit: int) -> str:
+def _trim(text: str | None, limit: int) -> str:
     text = (text or "").replace("</recalled_memory>", "")
     return text if len(text) <= limit else text[:limit] + " …[trimmed]"
 
 
-_client: Any = None
-_embed_fn: Any = None
-_collection: Any = None
+def error_signature(error: str | None) -> str:
+    """Reduce a traceback to a stable 'ExceptionType: message' line with numbers masked."""
+    lines = [ln.strip() for ln in (error or "").strip().splitlines() if ln.strip()]
+    candidates = [ln for ln in lines if re.match(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt)\b", ln)]
+    line = candidates[-1] if candidates else (lines[-1] if lines else "unknown failure")
+    return re.sub(r"\d+", "N", line)[:200]
 
 
 def _get_collection(collection_override=None):
-    """Lazily load persistent ChromaDB client and all-MiniLM-L6-v2 embedding model."""
+    """Lazily create the persistent client and collection."""
     if collection_override is not None:
         return collection_override
 
-    global _client, _embed_fn, _collection
+    global _client, _collection
     if _collection is None:
+        import chromadb
+        from chromadb.utils import embedding_functions
+
         if _client is None:
             os.makedirs(MEMORY_DIR, exist_ok=True)
             _client = chromadb.PersistentClient(path=MEMORY_DIR)
-        if _embed_fn is None:
-            _embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="all-MiniLM-L6-v2"
-            )
         _collection = _client.get_or_create_collection(
             name=MEMORY_COLLECTION,
-            embedding_function=_embed_fn,
+            embedding_function=embedding_functions.DefaultEmbeddingFunction(),
             metadata={"hnsw:space": "cosine"},
         )
     return _collection
 
 
-def store_failure(task: str, code: str, error: str, collection=None) -> str:
-    """
-    Store a failed attempt in vector memory.
-    The embedded document is task + error combined so retrieval
-    finds similar TASKS with similar ERRORS, not just similar task wording.
-    Returns the memory ID.
-    """
+def _add(kind: str, task: str, error: str, code: str = "", lesson: str = "",
+         workspace: str = "default", collection=None) -> str:
     coll = _get_collection(collection)
     memory_id = str(uuid.uuid4())
     task = _trim(task, _FIELD_LIMITS["task"])
-    code = _trim(code, _FIELD_LIMITS["code"])
     error = _trim(error, _FIELD_LIMITS["error"])
-    document =f"TASK: {task}\nERROR: {error}"
-
+    document = f"TASK: {task}\nERROR: {error_signature(error)}"
     coll.add(
         ids=[memory_id],
         documents=[document],
         metadatas=[{
+            "kind": kind,
             "task": task,
-            "code": code,
+            "code": _trim(code, _FIELD_LIMITS["code"]),
             "error": error,
+            "signature": error_signature(error),
+            "lesson": _trim(lesson, _FIELD_LIMITS["lesson"]),
+            "workspace": workspace,
+            "uses": 0,
+            "pinned": False,
             "timestamp": datetime.now().isoformat(),
         }],
     )
     return memory_id
+
+
+def store_failure(task: str, code: str, error: str, collection=None, workspace: str = "default") -> str:
+    """Store a task that never passed. The document embeds task + error signature."""
+    return _add("failure", task, error, code=code, workspace=workspace, collection=collection)
+
+
+def store_lesson(task: str, error: str, lesson: str, code: str = "", collection=None,
+                 workspace: str = "default") -> str:
+    """Store what fixed a failure, so similar tasks can avoid the mistake up front."""
+    return _add("fix", task, error, code=code, lesson=lesson, workspace=workspace, collection=collection)
 
 
 def retrieve_similar_failures(
@@ -86,38 +103,82 @@ def retrieve_similar_failures(
     top_k: int = MEMORY_TOP_K,
     similarity_threshold: float = MEMORY_SIMILARITY_THRESHOLD,
     collection=None,
+    workspace: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Find the most semantically similar past failures for a given task.
-    Returns a list of dicts: { task, code, error, similarity }
-    Only includes results above similarity_threshold (default 0.75).
-    Returns empty list if memory is empty.
+    Find the most semantically similar memories for a task (both kinds).
+    Returns dicts: { id, kind, task, code, error, lesson, similarity }, above the threshold only.
     """
     coll = _get_collection(collection)
     count = coll.count()
     if count == 0:
         return []
 
-    n_results = min(top_k, count)
-    results = coll.query(
-        query_texts=[task],
-        n_results=n_results,
-        include=["metadatas", "distances"],
-    )
+    query: dict[str, Any] = {
+        "query_texts": [task],
+        "n_results": min(top_k, count),
+        "include": ["metadatas", "distances"],
+    }
+    if workspace:
+        query["where"] = {"workspace": workspace}
+    results = coll.query(**query)
 
     memories: list[dict[str, Any]] = []
     if results and results.get("metadatas") and results.get("distances"):
-        for meta, distance in zip(results["metadatas"][0], results["distances"][0]):
+        ids = (results.get("ids") or [[None] * len(results["metadatas"][0])])[0]
+        for mem_id, meta, distance in zip(ids, results["metadatas"][0], results["distances"][0]):
             similarity = 1.0 - distance  # cosine distance → similarity
             if similarity >= similarity_threshold:
                 memories.append({
-                    "task": meta["task"],
-                    "code": meta["code"],
-                    "error": meta["error"],
+                    "id": mem_id,
+                    "kind": meta.get("kind", "failure"),
+                    "task": meta.get("task", ""),
+                    "code": meta.get("code", ""),
+                    "error": meta.get("error", ""),
+                    "lesson": meta.get("lesson", ""),
                     "similarity": round(similarity, 3),
                 })
-
     return memories
+
+
+def mark_used(memory_ids: list[str], collection=None) -> None:
+    """Bump the usage counter of recalled memories (best effort)."""
+    ids = [i for i in memory_ids if i]
+    if not ids:
+        return
+    try:
+        coll = _get_collection(collection)
+        got = coll.get(ids=ids, include=["metadatas"])
+        metas = [{**m, "uses": int(m.get("uses", 0)) + 1} for m in got["metadatas"]]
+        coll.update(ids=got["ids"], metadatas=metas)
+    except Exception:
+        pass
+
+
+def format_memories(memories: list[dict[str, Any]]) -> str:
+    """Render recalled memories as the size-capped reference block for the prompt."""
+    if not memories:
+        return ""
+    lines = ["PAST FAILURES TO AVOID (learn from these mistakes):\n"]
+    used = len(lines[0])
+    for i, m in enumerate(memories, 1):
+        parts = [
+            f"[Memory {i} — similarity: {m['similarity']}]",
+            f"Task: {_trim(m['task'], _FIELD_LIMITS['task'])}",
+        ]
+        if m.get("kind") == "fix" and m.get("lesson"):
+            parts.append(f"What broke: {_trim(m['error'], _FIELD_LIMITS['error'])}")
+            parts.append(f"What fixed it: {_trim(m['lesson'], _FIELD_LIMITS['lesson'])}")
+        else:
+            parts.append(f"What was tried:\n{_trim(m['code'], _FIELD_LIMITS['code'])}")
+            parts.append(f"What went wrong: {_trim(m['error'], _FIELD_LIMITS['error'])}")
+            parts.append("Do not repeat this approach.\n")
+        entry = "\n".join(parts)
+        if used + len(entry) > MEMORY_MAX_CHARS:
+            break
+        lines.append(entry)
+        used += len(entry)
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def build_memory_context(
@@ -126,51 +187,64 @@ def build_memory_context(
     similarity_threshold: float = MEMORY_SIMILARITY_THRESHOLD,
     collection=None,
 ) -> str:
-    """
-    Build a text block of past failures for injection into the generator prompt.
-    Returns empty string if no relevant memories exist above threshold.
-    """
-    memories = retrieve_similar_failures(
-        task=task,
-        top_k=top_k,
-        similarity_threshold=similarity_threshold,
-        collection=collection,
-    )
-    if not memories:
-        return ""
+    """Text block of relevant memories, or empty string when none clear the threshold."""
+    return format_memories(retrieve_similar_failures(
+        task=task, top_k=top_k, similarity_threshold=similarity_threshold, collection=collection,
+    ))
 
-    lines = ["PAST FAILURES TO AVOID (learn from these mistakes):\n"]
-    used = len(lines[0])
-    for i, m in enumerate(memories, 1):
-        entry = "\n".join([
-            f"[Memory {i} — similarity: {m['similarity']}]",
-            f"Task: {_trim(m['task'], _FIELD_LIMITS['task'])}",
-            f"What was tried:\n{_trim(m['code'], _FIELD_LIMITS['code'])}",
-            f"What went wrong: {_trim(m['error'], _FIELD_LIMITS['error'])}",
-            "Do not repeat this approach.\n",
-        ])
-        if used + len(entry) > MEMORY_MAX_CHARS:
-            break
-        lines.append(entry)
-        used += len(entry)
 
-    return "\n".join(lines) if len(lines) > 1 else ""
+def list_memories(limit: int = 50, offset: int = 0, kind: str | None = None,
+                  workspace: str | None = None, collection=None) -> dict[str, Any]:
+    """Page through stored memories, newest first."""
+    coll = _get_collection(collection)
+    where: dict[str, Any] = {}
+    if kind:
+        where["kind"] = kind
+    if workspace:
+        where["workspace"] = workspace
+    if len(where) > 1:
+        where = {"$and": [{k: v} for k, v in where.items()]}
+    got = coll.get(where=where or None, include=["metadatas"])
+    items = [{"id": i, **m} for i, m in zip(got["ids"], got["metadatas"])]
+    # Newest first, then pinned ones float to the top (sort is stable)
+    items.sort(key=lambda m: m.get("timestamp", ""), reverse=True)
+    items.sort(key=lambda m: not m.get("pinned"))
+    return {"total": len(items), "items": items[offset: offset + limit]}
+
+
+def delete_memory(memory_id: str, collection=None) -> bool:
+    coll = _get_collection(collection)
+    if not coll.get(ids=[memory_id])["ids"]:
+        return False
+    coll.delete(ids=[memory_id])
+    return True
+
+
+def set_pinned(memory_id: str, pinned: bool, collection=None) -> bool:
+    coll = _get_collection(collection)
+    got = coll.get(ids=[memory_id], include=["metadatas"])
+    if not got["ids"]:
+        return False
+    coll.update(ids=[memory_id], metadatas=[{**got["metadatas"][0], "pinned": pinned}])
+    return True
 
 
 def memory_stats(collection=None) -> dict[str, Any]:
-    """Return basic stats about what's stored in memory."""
     coll = _get_collection(collection)
+    got = coll.get(include=["metadatas"])
+    kinds = [m.get("kind", "failure") for m in got["metadatas"]]
     return {
-        "total_failures_stored": coll.count(),
-        "memory_dir": os.path.abspath(MEMORY_DIR),
+        "total": len(kinds),
+        "failures": kinds.count("failure"),
+        "fixes": kinds.count("fix"),
+        "times_recalled": sum(int(m.get("uses", 0)) for m in got["metadatas"]),
     }
 
 
 def clear_memory(collection=None) -> None:
     """Wipe all stored memories. Use with caution."""
-    global _client, _collection, _embed_fn
+    global _collection
     if collection is not None:
-        # Clear mock/override collection
         return
     if _client is not None:
         try:
