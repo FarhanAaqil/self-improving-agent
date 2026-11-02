@@ -47,7 +47,8 @@ LOG_DIR = os.path.join(_ROOT, "logs")  # legacy
 
 # ── Vector Memory (ChromaDB) ────────────────────────────────
 MEMORY_ENABLED = _flag("MEMORY_ENABLED", "true")
-MEMORY_DIR = os.getenv("MEMORY_DIR", os.path.join(_ROOT, "memory_db"))
+# Versioned on purpose: an older chromadb can leave a store the current one cannot open
+MEMORY_DIR = os.getenv("MEMORY_DIR", os.path.join(_ROOT, "memory_db", "v2"))
 MEMORY_COLLECTION = "failures"
 MEMORY_TOP_K = int(os.getenv("MEMORY_TOP_K", "3"))
 # 0.75 threshold: lower thresholds pull semantically unrelated tasks as false-positive context
