@@ -1,15 +1,18 @@
-# Adversarial test: resource exhaustion attack allocating unbounded memory.
-# Enforced by Docker --memory=256m and --cpus=0.5.
+# Adversarial test: a real fork bomb.
+# --pids-limit must stop process creation long before the host notices.
+import os
 import time
 
+children = 0
 try:
-    memory_sink = []
-    # Rapidly exhaust memory
-    for _ in range(100):
-        memory_sink.append(bytearray(10 * 1024 * 1024))  # 10MB chunks
-        time.sleep(0.01)
-    print("VULNERABILITY: allocated 1GB+ without being capped")
+    for _ in range(500):
+        pid = os.fork()
+        if pid == 0:
+            time.sleep(3)
+            os._exit(0)
+        children += 1
+    print(f"VULNERABILITY: spawned {children} processes without hitting a limit")
     exit(0)
-except (MemoryError, OSError) as e:
-    print(f"BLOCKED: memory bounded by host cap ({e})")
+except OSError as e:
+    print(f"BLOCKED: process limit hit after {children} forks ({e})")
     exit(1)
