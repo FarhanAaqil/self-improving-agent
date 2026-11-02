@@ -61,6 +61,19 @@ class GenerateAndRepairRequest(BaseModel):
         return _check_model(value)
 
 
+class CompareRequest(GenerateAndRepairRequest):
+    models: list[str] = Field(..., min_length=2, max_length=4, description="Models to race on the same task")
+
+    @field_validator("models")
+    @classmethod
+    def _models_ok(cls, value: list[str]) -> list[str]:
+        for model in value:
+            _check_model(model)
+        if len(set(value)) != len(value):
+            raise ValueError("Each model may appear once.")
+        return value
+
+
 class EvalRunRequest(BaseModel):
     benchmark: Literal["humaneval"] = Field("humaneval", description="Benchmark to run")
     subset_size: int = Field(10, ge=1, le=50, description="Number of problems to evaluate")

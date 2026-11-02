@@ -234,3 +234,17 @@ def test_browser_navigation_gets_the_app_while_fetch_gets_json():
     assert api.status_code == 404 and api.headers["content-type"].startswith("application/json")
     # API docs are HTML too, but must stay Swagger, not the React shell
     assert "swagger" in client.get("/docs", headers={"Accept": "text/html"}).text.lower()
+
+
+def test_app_shell_is_never_cached_in_place_of_json():
+    """A page and its API share URLs, so caches must vary on Accept and skip the shell."""
+    import pytest
+
+    from app.main import _FRONTEND_DIST
+
+    if not (_FRONTEND_DIST / "index.html").exists():
+        pytest.skip("frontend/dist not built")
+    page = client.get("/shared/some-token", headers={"Accept": "text/html"})
+    assert page.headers["vary"] == "Accept"
+    assert "no-store" in page.headers["cache-control"]
+    assert "no-store" in client.get("/shared/some-token").headers["cache-control"]

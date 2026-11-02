@@ -93,6 +93,15 @@ def _result(success, output, error, exit_code, latency_ms, sandboxed) -> dict:
     }
 
 
+def _record(result: dict) -> dict:
+    from app.observability import metrics
+
+    outcome = "timeout" if "timed out" in (result.get("error") or "") else ("ok" if result["success"] else "error")
+    metrics.inc("agent_sandbox_executions_total", outcome=outcome, sandboxed=str(result["sandboxed"]).lower())
+    metrics.inc("agent_sandbox_seconds_sum", (result.get("latency_ms") or 0) / 1000)
+    return result
+
+
 def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
     """
     Execute Python inside a locked-down Docker container. Refuses to run when Docker
@@ -101,9 +110,9 @@ def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
     """
     with _slots:
         if _is_docker_available():
-            return _run_docker(code, timeout)
+            return _record(_run_docker(code, timeout))
         if ALLOW_UNSAFE_HOST_SUBPROCESS:
-            return _run_subprocess_fallback(code, timeout)
+            return _record(_run_subprocess_fallback(code, timeout))
         return _result(
             False,
             None,
