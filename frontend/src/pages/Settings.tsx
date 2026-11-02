@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Monitor, Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
-import { getStoredApiKey } from '../api/client'
+import { getStoredApiKey, getStoredGroqKey, setStoredGroqKey } from '../api/client'
 import ApiKeyDialog from '../components/ApiKeyDialog'
 import { PageHeader, Panel } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
@@ -38,6 +38,8 @@ export default function Settings() {
   const qc = useQueryClient()
   const [keyOpen, setKeyOpen] = useState(false)
   const [hasKey, setHasKey] = useState(() => Boolean(getStoredApiKey()))
+  const [groqKey, setGroqKey] = useState(() => getStoredGroqKey() ?? '')
+  const [groqSaved, setGroqSaved] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -108,6 +110,32 @@ export default function Settings() {
           </button>
         </div>
       </Panel>
+
+      {health?.byo_groq_key && (
+        <Panel title="your own groq key">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setStoredGroqKey(groqKey.trim() || null)
+              setGroqSaved(true)
+              setTimeout(() => setGroqSaved(false), 1500)
+            }}
+          >
+            <p className="text-sm text-ink-secondary">
+              Runs started from this tab will use your key instead of the server's. It is sent with each request,
+              used only for that run, and never stored on the server.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="flex-1">
+                <span className="sr-only">Groq API key</span>
+                <input type="password" autoComplete="off" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder="gsk_…" className="input font-mono" />
+              </label>
+              <button type="submit" className="btn-secondary">{groqSaved ? 'saved' : groqKey ? 'save' : 'clear'}</button>
+            </div>
+          </form>
+        </Panel>
+      )}
 
       <ApiKeyDialog
         open={keyOpen}

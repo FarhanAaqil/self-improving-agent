@@ -212,26 +212,32 @@ def list_memories(limit: int = 50, offset: int = 0, kind: str | None = None,
     return {"total": len(items), "items": items[offset: offset + limit]}
 
 
-def delete_memory(memory_id: str, collection=None) -> bool:
+def _owned(got: dict, workspace: str | None) -> bool:
+    if not got["ids"]:
+        return False
+    return workspace is None or got["metadatas"][0].get("workspace", "default") == workspace
+
+
+def delete_memory(memory_id: str, collection=None, workspace: str | None = None) -> bool:
     coll = _get_collection(collection)
-    if not coll.get(ids=[memory_id])["ids"]:
+    if not _owned(coll.get(ids=[memory_id], include=["metadatas"]), workspace):
         return False
     coll.delete(ids=[memory_id])
     return True
 
 
-def set_pinned(memory_id: str, pinned: bool, collection=None) -> bool:
+def set_pinned(memory_id: str, pinned: bool, collection=None, workspace: str | None = None) -> bool:
     coll = _get_collection(collection)
     got = coll.get(ids=[memory_id], include=["metadatas"])
-    if not got["ids"]:
+    if not _owned(got, workspace):
         return False
     coll.update(ids=[memory_id], metadatas=[{**got["metadatas"][0], "pinned": pinned}])
     return True
 
 
-def memory_stats(collection=None) -> dict[str, Any]:
+def memory_stats(collection=None, workspace: str | None = None) -> dict[str, Any]:
     coll = _get_collection(collection)
-    got = coll.get(include=["metadatas"])
+    got = coll.get(where={"workspace": workspace} if workspace else None, include=["metadatas"])
     kinds = [m.get("kind", "failure") for m in got["metadatas"]]
     return {
         "total": len(kinds),

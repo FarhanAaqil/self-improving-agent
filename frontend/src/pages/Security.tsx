@@ -131,7 +131,7 @@ export default function Security() {
       <Panel title="what this does not protect against">
         <ul className="list-disc space-y-2 pl-5 text-sm text-ink-secondary">
           <li><strong className="text-ink">Kernel zero-days.</strong> Docker shares the host kernel. For hostile multi-tenant use, run the sandbox under gVisor (runsc), Kata, or a microVM provider.</li>
-          <li><strong className="text-ink">The Docker socket.</strong> The API talks to Docker to start containers, so whoever controls the API host controls the sandboxes. Put a restricted socket proxy or a separate runner machine between them.</li>
+          <li><strong className="text-ink">The Docker socket.</strong> The API talks to Docker to start containers. The compose setup routes that through a socket proxy that refuses exec, volumes, networks, builds and system calls, and the API itself runs as a non-root user with no socket. A proxy still can't inspect what a container create asks for, so treat the API host as trusted and keep it on its own machine.</li>
           <li><strong className="text-ink">Correctness.</strong> Passing spec tests means the code does what the tests check. The tests are written by a model too, so read anything you ship.</li>
           <li><strong className="text-ink">Prompt injection.</strong> Recalled memories are fenced and size-capped as data, but a determined attacker can still write misleading tasks. Memories can be audited and deleted on the memory page.</li>
         </ul>

@@ -493,3 +493,67 @@ def run_stats_by_day(days: int = 60, workspace: str | None = None, db_path: str 
     """
     with get_connection(db_path) as conn:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+# ── Workspaces, usage, sharing, compare groups ───────────────
+
+def tokens_today(workspace: str | None = None, db_path: str = DB_PATH) -> int:
+    """Tokens spent by runs created today (UTC date of created_at), optionally per workspace."""
+    sql = (
+        "SELECT COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) "
+        "FROM runs WHERE substr(created_at, 1, 10) = ?"
+    )
+    params: list[Any] = [datetime.now().date().isoformat()]
+    if workspace:
+        sql += " AND COALESCE(workspace, 'default') = ?"
+        params.append(workspace)
+    with get_connection(db_path) as conn:
+        return int(conn.execute(sql, params).fetchone()[0])
+
+
+def run_workspace(run_id: str, db_path: str = DB_PATH) -> str | None:
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT COALESCE(workspace, 'default') FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        return row[0] if row else None
+
+
+def get_run_by_share_token(token: str, db_path: str = DB_PATH) -> dict[str, Any] | None:
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT run_id FROM runs WHERE share_token = ?", (token,)).fetchone()
+    return get_run_with_attempts(row[0], db_path=db_path) if row else None
+
+
+def list_group_runs(group_id: str, workspace: str | None = None, db_path: str = DB_PATH) -> list[dict[str, Any]]:
+    params: list[Any] = [group_id]
+    ws = ""
+    if workspace:
+        ws = " AND COALESCE(r.workspace, 'default') = ?"
+        params.append(workspace)
+    with get_connection(db_path) as conn:
+        rows = conn.execute(f"{_SUMMARY_SQL} WHERE r.group_id = ?{ws} ORDER BY r.model_name", params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def memory_effect(workspace: str | None = None, db_path: str = DB_PATH) -> dict[str, Any]:
+    """First-try success with and without recalled memory: does remembering actually help?"""
+    params: list[Any] = []
+    ws = ""
+    if workspace:
+        ws = " AND COALESCE(r.workspace, 'default') = ?"
+        params.append(workspace)
+    sql = f"""
+        SELECT
+          CASE WHEN r.memories_json IS NOT NULL AND r.memories_json != '[]' THEN 'with' ELSE 'without' END AS bucket,
+          COUNT(*) AS runs,
+          SUM(CASE WHEN r.final_status = 'success' THEN 1 ELSE 0 END) AS solved,
+          SUM(CASE WHEN EXISTS (SELECT 1 FROM attempts a WHERE a.run_id = r.run_id
+                   AND a.attempt_number = 1 AND a.success = 1) THEN 1 ELSE 0 END) AS first_try,
+          AVG(r.total_attempts) AS avg_attempts
+        FROM runs r
+        WHERE r.final_status IN ('success', 'max_retries_exceeded', 'early_stopped', 'failed'){ws}
+        GROUP BY bucket
+    """
+    with get_connection(db_path) as conn:
+        rows = {r["bucket"]: dict(r) for r in conn.execute(sql, params).fetchall()}
+    empty = {"runs": 0, "solved": 0, "first_try": 0, "avg_attempts": None}
+    return {"with_memory": rows.get("with", empty), "without_memory": rows.get("without", empty)}

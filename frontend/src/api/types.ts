@@ -222,6 +222,8 @@ export interface HealthResponse {
   auth?: 'key' | 'open' | 'locked'
   code_override_enabled?: boolean
   memory_enabled?: boolean
+  byo_groq_key?: boolean
+  daily_token_budget?: number
   models?: string[]
   default_model?: string
 }
@@ -265,4 +267,70 @@ export const TERMINAL_STATUSES = ['success', 'failed', 'max_retries_exceeded', '
 
 export function isTerminalStatus(status?: string | null): boolean {
   return Boolean(status && TERMINAL_STATUSES.includes(status))
+}
+
+export interface Certificate {
+  certificate_version: number
+  issued_at: string
+  run_id: string
+  task: string
+  model: string | null
+  verified_on_attempt: number
+  attempts: number
+  code_sha256: string
+  verified_code_sha256: string
+  docs_applied_and_reverified: boolean
+  tests: { passed: number | null; total: number | null }
+  coverage: number | null
+  quality_score: number | null
+  bandit_issues: number
+  sandbox: { sandboxed: boolean; image: string; timeout_seconds: number; docker_args: string[] }
+  signature: string | null
+  signed: boolean
+}
+
+export interface SharedRun extends RunOut {
+  certificate: Certificate | null
+}
+
+export interface ShareLink {
+  token: string
+  url: string
+  badge: string
+}
+
+export interface Comparison {
+  group_id: string
+  task: string
+  runs: RunSummary[]
+}
+
+export interface Usage {
+  workspace: string
+  tokens_today: number
+  daily_budget: number | null
+  remaining: number | null
+}
+
+export interface DailyStat {
+  day: string
+  runs: number
+  solved: number
+  first_try: number
+  used_memory: number
+  avg_attempts: number | null
+  first_try_rate: number | null
+  solve_rate: number | null
+}
+
+export interface MemoryBucket {
+  runs: number
+  solved: number
+  first_try: number
+  avg_attempts: number | null
+}
+
+export interface Improvement {
+  daily: DailyStat[]
+  memory_effect: { with_memory: MemoryBucket; without_memory: MemoryBucket }
 }

@@ -1,43 +1,79 @@
 # docker-compose.yml
 # ─────────────────────────────────────────────────────────────
-# Orchestrates the FastAPI service container.
-# The per-execution sandbox containers are NOT defined here —
-# they are launched dynamically by app/sandbox.py via
-# subprocess("docker run ...") using the host Docker socket.
+# The API never touches the Docker socket directly. It talks to a socket proxy
+# that only allows what sandbox runs need (create, attach, start, wait, kill,
+# remove containers; inspect images; ping). Everything else (volumes, networks,
+# exec, swarm, secrets, build, ...) is refused. The proxy sits on an internal
+# network the published port can't reach.
 #
-# ⚠️  SECURITY NOTE (documented, not hidden):
-#   The FastAPI service container mounts the host Docker socket
-#   (/var/run/docker.sock). This grants the service container
-#   Docker-daemon-equivalent privilege on the host — it can
-#   launch, inspect, and kill any container. This is the v1
-#   sibling-container approach described in the architecture doc
-#   Section 6. It is a deliberate, documented tradeoff, not an
-#   oversight. Cloud sandbox APIs (E2B, Modal) are a v2 option
-#   if the privilege surface becomes unacceptable.
+# Sandbox containers themselves are started per execution by app/sandbox.py
+# with no network, no capabilities, a pids limit and a read-only root.
+#
+# Remaining trust boundary (documented, not hidden): whoever can create
+# containers on a host is close to root on it. For hostile multi-tenant use,
+# run this on a dedicated VM or swap in gVisor / a microVM sandbox provider.
 
 services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      INFO: 1
+      VERSION: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 0
+      EXEC: 0
+      VOLUMES: 0
+      NETWORKS: 0
+      BUILD: 0
+      SWARM: 0
+      SECRETS: 0
+      CONFIGS: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SYSTEM: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-control
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      - docker-proxy
     ports:
       - "8000:8000"
     environment:
-      - GROQ_API_KEY=${GROQ_API_KEY}
+      - DOCKER_HOST=tcp://docker-proxy:2375
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - APP_ENV=${APP_ENV:-development}
       - API_KEY=${API_KEY:-}
-      - DB_PATH=/data/agent.db
-      - MEMORY_DIR=/data/memory_db
+      - API_KEYS=${API_KEYS:-}
+      - FAKE_LLM=${FAKE_LLM:-false}
       - DEMO_MODE=${DEMO_MODE:-false}
+      - DAILY_TOKEN_BUDGET=${DAILY_TOKEN_BUDGET:-0}
+      - CERT_SIGNING_KEY=${CERT_SIGNING_KEY:-}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_REPO=${GITHUB_REPO:-FarhanAaqil/self-improving-agent}
     volumes:
-      # Host Docker socket — required for sibling-container sandbox execution.
-      # See security note above.
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Persistent data volume — SQLite DB + ChromaDB
       - agent_data:/data
+    networks:
+      - docker-control
+      - default
     restart: unless-stopped
+
+networks:
+  docker-control:
+    internal: true
 
 volumes:
   agent_data:

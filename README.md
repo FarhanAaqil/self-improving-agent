@@ -172,95 +172,111 @@ Official HumanEval, 40 problems, `qwen/qwen3.8-27b`, run 2026-11-02 in the Docke
 ## 6. Setup & Quickstart
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+ (for frontend development)
-- Docker Desktop or Docker Engine active
-- Free Groq API Key from [console.groq.com](https://console.groq.com)
+- Python 3.11+, Node.js 22.18+ (24 recommended)
+- Docker Desktop or Docker Engine running
+- A free Groq API key from [console.groq.com](https://console.groq.com), or none at all for the offline demo
 
-### Option A: Docker Compose (Fastest)
+### Try it in 60 seconds, no API key (offline demo)
+
+`FAKE_LLM=true` swaps Groq for a scripted model that gets the first attempt wrong on purpose. Everything else is real: spec tests, the Docker sandbox, the diagnosis, the repair, the review and the live UI.
 
 ```bash
-# Clone the repository
 git clone https://github.com/FarhanAaqil/self-improving-agent.git
 cd self-improving-agent
-
-# Copy the example env and add your Groq API key
-cp .env.example .env
-
-# Build and run the entire stack
-docker compose up --build
+FAKE_LLM=true docker compose up --build
+# open http://localhost:8000 and ask for: Write add(a, b) returning the sum
 ```
-Navigate to `http://localhost:8000` to interact with the full React application.
 
-### Option B: Local Development
+### Docker Compose with Groq
 
 ```bash
-# 1. Install Python dependencies in editable mode and create your .env
+cp .env.example .env          # add GROQ_API_KEY
+docker compose up --build     # http://localhost:8000
+```
+
+The API container runs as a non-root user and reaches Docker only through a socket proxy that refuses exec, volumes, networks, builds and system calls.
+
+### Local development
+
+```bash
 pip install -e ".[dev]"
-cp .env.example .env   # APP_ENV=development keeps the API open locally
-
-# 2. Build the React frontend SPA
-cd frontend
-npm install
-npm run build
-cd ..
-
-# 3. Pull the execution sandbox container
+cp .env.example .env          # APP_ENV=development keeps the API open locally
 docker pull python:3.11-slim
 
-# 4. Start the FastAPI backend
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000     # API (and the built UI, if present)
+npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload on :5173
 ```
+
+### Configuration
+
+| Variable | Default | What it does |
+|---|---|---|
+| `GROQ_API_KEY` | — | Server-side Groq key |
+| `APP_ENV` | `production` | `development` keeps the API open without a key; anything else fails closed |
+| `API_KEY` | — | Key for the `default` workspace |
+| `API_KEYS` | — | More workspaces: `alice:key1,team-b:key2`. Each sees only its own runs and memory |
+| `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
+| `ALLOW_BYO_GROQ_KEY` | `true` | Callers may send `X-Groq-Key`; used for that run only, never stored |
+| `DAILY_TOKEN_BUDGET` | `0` (off) | Per-workspace daily token cap; new runs get `429` once spent |
+| `RATE_LIMIT_PER_MINUTE` | `20` | Per-client limit on endpoints that spend tokens or sandbox time |
+| `CERT_SIGNING_KEY` | — | HMAC-signs exported verification certificates |
+| `MEMORY_ENABLED` | `true` | Vector memory of failures and lessons |
+| `FAKE_LLM` | `false` | Offline demo / end-to-end test mode |
+| `LOG_FORMAT` | `text` | `json` for structured logs with request ids |
+| `SANDBOX_TIMEOUT`, `SANDBOX_MEMORY`, `SANDBOX_PIDS` | `10`, `256m`, `64` | Sandbox limits |
+| `ALLOW_UNSAFE_HOST_SUBPROCESS` | `false` | Runs code on the host if Docker is missing. Never on a shared server |
+| `ALLOW_CODE_OVERRIDE` | `false` | Lets `/execute` run caller-supplied code |
 
 ---
 
 ## 7. API Reference
 
-Interactive OpenAPI documentation and Swagger UI are hosted at `http://localhost:8000/docs`.
+Interactive OpenAPI docs live at `http://localhost:8000/docs`. Every route except `/health`, `/models`, `/sandbox/*` (read) and `/shared/*` needs a key unless `APP_ENV=development`.
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/health` | Health telemetry, Docker engine availability, and demo mode flags |
-| `POST` | `/generate` | Generate initial code without execution |
-| `POST` | `/execute/{run_id}` | Dispatch a specific run's code into the Docker sandbox |
-| `POST` | `/generate-and-repair` | Full loop, synchronous (blocks until done) |
-| `POST` | `/runs` | Full loop in the background; returns `run_id` immediately (202) |
-| `GET` | `/runs/{run_id}/events` | Server-sent events: every step of a run, live, resumable with `Last-Event-ID` |
-| `GET` | `/runs` | Paginated run summaries (`page`, `page_size`, `q`, `status`) |
-| `GET` | `/runs/{run_id}` | Full attempt history, spec tests, diagnosis, recalled memories, quality report |
-| `GET` | `/memory`, `/memory/search`, `/memory/stats` | Browse and search what the agent has learned |
-| `DELETE` | `/memory/{id}` | Forget a memory (`POST /memory/{id}/pin` to pin one) |
-| `GET` | `/models`, `/sandbox/config` | Available models and the exact sandbox command in use |
-| `POST` | `/runs/{run_id}/pr` | Automated GitHub Pull Request opening with verified solution |
-| `GET` | `/eval/latest`, `/eval/history` | Latest and past benchmark results |
-| `POST` | `/eval/run` | Start a benchmark run (`GET /eval/status/{id}` for progress) |
+| `GET` | `/health`, `/models`, `/sandbox/config` | Status, available models, the exact sandbox command |
+| `POST` | `/runs` | Start the full loop in the background (202, returns `run_id`) |
+| `GET` | `/runs/{id}/events` | Server-sent events for every step, resumable with `Last-Event-ID` |
+| `GET` | `/runs`, `/runs/{id}` | Paginated summaries (`page`, `q`, `status`) and full run detail |
+| `POST` | `/generate-and-repair` | The same loop, synchronous |
+| `POST` | `/compare` · `GET /compare/{group}` | Race 2–4 models on one task and compare them |
+| `GET` | `/runs/{id}/certificate` | Signed JSON certificate: code hash, tests, coverage, sandbox flags |
+| `POST`/`DELETE` | `/runs/{id}/share` | Create or revoke a public read-only link |
+| `GET` | `/shared/{token}`, `/shared/{token}/badge.svg` | The shared run and a README badge |
+| `GET` | `/memory`, `/memory/search`, `/memory/stats` | Browse and search what the agent learned |
+| `DELETE`/`POST` | `/memory/{id}`, `/memory/{id}/pin` | Forget or pin a memory |
+| `GET` | `/stats/improvement`, `/usage` | Daily first-try/solve rates, memory effect, today's token use |
+| `GET`/`POST` | `/sandbox/attacks`, `/sandbox/attacks/{name}` | List and launch the curated attacks |
+| `POST` | `/runs/{id}/pr` | Open a GitHub PR for a verified run (allowlisted repos only) |
+| `GET`/`POST` | `/eval/latest`, `/eval/history`, `/eval/run`, `/eval/status/{id}` | Benchmarks |
+| `POST` | `/generate`, `/execute/{id}` | Generate only, or re-execute an attempt |
+| `GET` | `/metrics` | Prometheus counters (requests, runs, sandbox outcomes, tokens) |
 
 ---
 
-## 8. Honest Limitations & Threat Model Boundary
+## 8. Testing
 
-- **Python-Only Scope:** The current iteration evaluates and repairs Python code exclusively. Multi-language polyglot support is omitted by design to ensure tight sandbox isolation and deterministic AST metrics.
-- **Docker-Socket Privilege Tradeoff:** The backend service container mounts `/var/run/docker.sock` to dynamically spawn sibling sandbox containers. Mounting the host Docker socket provides root-equivalent access to the host daemon. In production deployments, this should be replaced with rootless container engines, gVisor (`runsc`), Kata Containers, or cloud microVM executors (E2B / Modal).
-- **Free-Tier LLM Rate Limits:** Benchmarks are tuned for Groq's free-tier rate limits. Evaluating the entire 164-problem HumanEval set in rapid succession may trigger token bucket throttling.
-- **No Infinite Self-Modification:** The agent modifies its generated solutions in memory; it does not overwrite its own core source code.
+| Layer | What runs | Where |
+|---|---|---|
+| Backend | 91 pytest tests: pipeline, harness, metrics, memory, auth and workspaces, certificates, sharing, benchmark statistics | `pytest -m "not integration"` (coverage gate 75%, currently ~81%) |
+| Sandbox | 8 real attacks against a live Docker daemon, plus the attack API | part of the backend suite |
+| Frontend | SSE parser, LCS diff, highlighter, narration and stepper | `npm --prefix frontend test` |
+| End-to-end | Playwright drives the real UI against the real sandbox in offline demo mode: a run fails, gets diagnosed, repaired and verified; share links; attacks; theme and command palette | `cd e2e && npx playwright test` |
+| Live | One real Groq + Docker run, and the benchmark | `pytest -m integration`, `python -m eval.benchmark` |
+
+CI runs lint, backend (with coverage gate), frontend, end-to-end and an informational dependency audit on every push. Benchmarks only run on `main` when the `GROQ_API_KEY` secret is set.
 
 ---
 
-## 9. Deliverables Verification (PRD Section 10)
+## 9. Honest Limitations & Threat Model Boundary
 
-- [x] **Hardened Docker Sandbox:** Full isolation flags (`--network none`, `--read-only`, `--tmpfs`, `--memory=256m`) verified in `app/sandbox.py`.
-- [x] **5 Adversarial Tests:** Passing in CI under `tests/test_sandbox_isolation.py`.
-- [x] **SQLite Persistence:** Clean schema migrations and attempt tracking in `app/db.py`.
-- [x] **FastAPI Service:** 6 endpoints + Swagger docs live at `/docs`.
-- [x] **React SPA:** Vite + TS + TailwindCSS dashboard with live attempt polling and code diffs.
-- [x] **Post-Success Review Agents:** Test, Performance, Security Audit, and Documentation agents in `app/`.
-- [x] **Vector Memory:** ChromaDB failure storage and prompt injection with 0.75 similarity gate in `app/memory.py`.
-- [x] **50-Problem HumanEval Evaluation:** Committed real results in `results/humaneval_2026-09-12.json`.
-- [x] **15 Custom YAML Tasks:** Hand-written realistic engineering specs with custom runner in `eval/`.
-- [x] **Automated Table Generation:** `scripts/generate_readme_table.py` generates README benchmark metrics.
-- [x] **Full CI Pipeline:** GitHub Actions running lint, unit tests, regression-gated smoke eval, and integration tests.
-- [x] **GitHub PR Automation:** Gated PR generation agent in `app/github_agent.py`.
-- [x] **Demo Deployment Config:** `render.yaml` configured with demo badge mode.
+- **Docker shares the host kernel.** For hostile multi-tenant use, run the sandbox under gVisor (`runsc`), Kata or a microVM provider, on a dedicated host.
+- **The socket proxy narrows Docker's API, but it can't inspect what a container create asks for.** Treat the API host as trusted.
+- **Spec tests are written by a model.** Passing them means the code does what they check; read anything you ship.
+- **Memory is user-derived text.** It is fenced, size-capped and auditable, but a determined user can still write misleading tasks.
+- **HumanEval is saturated** for current models; the repair loop matters more on harder, under-specified tasks. HumanEval+ / MBPP+ are next.
+- **Python only**, single process (SQLite + in-process job pool). Postgres and a real queue are the path to horizontal scale.
 
 ---
 

@@ -3,6 +3,7 @@ import { Brain, Pin, PinOff, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { deleteMemory, getMemoryStats, listMemory, pinMemory, searchMemory } from '../api/client'
 import type { MemoryItem } from '../api/types'
+import ImprovementPanel from '../components/ImprovementPanel'
 import { Chip, EmptyState, ErrorNote, PageHeader, Skeleton, Stat } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
 import { relativeTime } from '../lib/format'
@@ -45,7 +46,8 @@ function MemoryCard({ m, onPin, onDelete }: { m: MemoryItem; onPin: () => void; 
 export default function MemoryExplorer() {
   const qc = useQueryClient()
   const { data: health } = useHealth()
-  const enabled = health?.memory_enabled !== false
+  // Don't query memory until we know the server has it switched on
+  const enabled = health?.memory_enabled === true
   const [kind, setKind] = useState('all')
   const [text, setText] = useState('')
   const [q, setQ] = useState('')
@@ -79,7 +81,11 @@ export default function MemoryExplorer() {
         lede="Failures I couldn't fix and lessons from ones I did. Before every run I recall the closest matches so I don't repeat myself. You can pin what matters and delete what doesn't."
       />
 
-      {!enabled ? (
+      <ImprovementPanel />
+
+      {!health ? (
+        <Skeleton className="h-40" />
+      ) : !enabled ? (
         <EmptyState icon={<Brain className="h-8 w-8" />} title="Memory is switched off on this server">
           Set MEMORY_ENABLED=true to let the agent learn across runs.
         </EmptyState>

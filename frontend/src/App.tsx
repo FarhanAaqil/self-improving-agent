@@ -14,6 +14,8 @@ const Benchmarks = lazy(() => import('./pages/Benchmarks'))
 const Security = lazy(() => import('./pages/Security'))
 const Settings = lazy(() => import('./pages/Settings'))
 const NotFound = lazy(() => import('./pages/NotFound'))
+const Compare = lazy(() => import('./pages/Compare'))
+const Shared = lazy(() => import('./pages/Shared'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +42,7 @@ export default function App() {
       <BrowserRouter>
         <Suspense fallback={<PageFallback />}>
           <Routes>
+            <Route path="/shared/:token" element={<Shared />} />
             <Route element={<AppShell />}>
               <Route path="/" element={<Workbench />} />
               <Route path="/runs/:runId" element={<RunTheater />} />
@@ -48,6 +51,7 @@ export default function App() {
               <Route path="/eval" element={<Benchmarks />} />
               <Route path="/security" element={<Security />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/compare/:groupId" element={<Compare />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

@@ -20,6 +20,7 @@ from app.documentation_agent import document_code
 from app.generator import generate_code
 from app.harness import Verification, verify
 from app.metrics import calculate_quality_metrics
+from app.observability import metrics
 from app.performance_agent import analyze_performance
 from app.static_analysis import bandit_scan, radon_complexity
 from app.test_agent import generate_spec_tests
@@ -37,6 +38,8 @@ class RunSpec:
     max_attempts: int = 3
     skip_agents: list[str] = field(default_factory=list)
     workspace: str = "default"
+    # A caller's own Groq key: used for this run only, never stored or printed
+    groq_key: str | None = field(default=None, repr=False)
 
     def skips(self, *names: str) -> bool:
         return any(n in self.skip_agents for n in names)
@@ -185,7 +188,7 @@ def _review(spec: RunSpec, run_id: str, attempt_id: int, code: str, tests: str |
 def execute_run(run_id: str, spec: RunSpec) -> str:
     """Run the full pipeline for an existing `runs` row. Returns the final status."""
     emit = Emitter(run_id)
-    with llm.track_usage() as usage:
+    with llm.groq_key(spec.groq_key), llm.track_usage() as usage:
         try:
             status = _execute(run_id, spec, emit)
         except Exception as e:
@@ -200,6 +203,9 @@ def execute_run(run_id: str, spec: RunSpec) -> str:
             finished_at=datetime.now().isoformat(),
         )
         emit("run_finished", status=status, tokens=usage["prompt_tokens"] + usage["completion_tokens"])
+        metrics.inc("agent_runs_total", status=status)
+        metrics.inc("agent_llm_tokens_total", usage["prompt_tokens"], kind="prompt")
+        metrics.inc("agent_llm_tokens_total", usage["completion_tokens"], kind="completion")
     return status
 
 

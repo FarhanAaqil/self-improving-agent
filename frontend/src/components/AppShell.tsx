@@ -2,14 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Command, KeyRound, Moon, Sun } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { getStoredApiKey, listRuns } from '../api/client'
+import { getStoredApiKey, getUsage, listRuns } from '../api/client'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences } from '../hooks/usePreferences'
 import ApiKeyDialog from './ApiKeyDialog'
 import BrandLogo from './BrandLogo'
 import CommandPalette from './CommandPalette'
 import { NAV_ITEMS } from './nav'
-import { Kbd } from './ui'
+import { Kbd, Meter } from './ui'
 
 function useHotkey(handler: () => void) {
   useEffect(() => {
@@ -43,6 +43,12 @@ export default function AppShell() {
     enabled: !needsKey,
   })
   const liveRun = active?.items[0]
+  const { data: usage } = useQuery({
+    queryKey: ['usage'],
+    queryFn: getUsage,
+    refetchInterval: 15000,
+    enabled: !needsKey && Boolean(health?.daily_token_budget),
+  })
 
   return (
     <div className="min-h-screen bg-canvas text-ink lg:flex">
@@ -96,6 +102,15 @@ export default function AppShell() {
             <dt>memory</dt>
             <dd className={`text-right ${health?.memory_enabled ? 'text-cyan' : 'text-ink-muted'}`}>{health?.memory_enabled ? 'on' : 'off'}</dd>
           </dl>
+          {usage?.daily_budget ? (
+            <div>
+              <div className="flex justify-between text-ink-secondary">
+                <span>tokens today</span>
+                <span className="tabular-nums">{Math.round((usage.tokens_today / usage.daily_budget) * 100)}%</span>
+              </div>
+              <div className="mt-1"><Meter value={usage.tokens_today / usage.daily_budget} tone={usage.remaining ? 'accent' : 'cyan'} label="Daily token budget used" /></div>
+            </div>
+          ) : null}
           <div className="text-ink-tertiary">v{health?.version ?? '…'}</div>
         </div>
       </aside>

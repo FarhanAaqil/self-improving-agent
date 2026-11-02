@@ -25,6 +25,8 @@ IS_DEV = APP_ENV in ("development", "dev", "local", "test")
 
 # ── LLM ────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# Offline demo / end-to-end test mode: a scripted model, real sandbox (see app/fake_llm.py)
+FAKE_LLM = _flag("FAKE_LLM")
 MODEL = os.getenv("MODEL", "qwen/qwen3.8-27b")
 AVAILABLE_MODELS = _csv(
     "AVAILABLE_MODELS",
@@ -67,6 +69,15 @@ GITHUB_ALLOWED_REPOS = sorted(set(_csv("GITHUB_ALLOWED_REPOS") + [GITHUB_REPO]))
 
 # ── Security & Hardening ─────────────────────────────────────
 API_KEY = os.getenv("API_KEY")
+# Extra keys, each its own workspace with separate runs and memory: "alice:key1,team-b:key2"
+API_KEYS = os.getenv("API_KEYS", "")
+# Callers may send their own Groq key in X-Groq-Key (never stored, never logged)
+ALLOW_BYO_GROQ_KEY = _flag("ALLOW_BYO_GROQ_KEY", "true")
+# Tokens a workspace may spend per UTC day on runs; 0 disables the cap
+DAILY_TOKEN_BUDGET = int(os.getenv("DAILY_TOKEN_BUDGET", "0"))
+# Signs exported verification certificates (HMAC-SHA256); unsigned when empty
+CERT_SIGNING_KEY = os.getenv("CERT_SIGNING_KEY", "")
+LOG_FORMAT = os.getenv("LOG_FORMAT", "text").strip().lower()  # "json" for structured logs
 # Running model output directly on the host is never safe; only for local experiments.
 ALLOW_UNSAFE_HOST_SUBPROCESS = _flag("ALLOW_UNSAFE_HOST_SUBPROCESS")
 # /execute with caller-supplied code is an arbitrary-code endpoint; off unless asked for.

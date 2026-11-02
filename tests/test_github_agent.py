@@ -86,6 +86,12 @@ def test_github_agent_creates_pr_with_mocked_github():
 
 def test_endpoint_post_run_pr():
     """Verify POST /runs/{run_id}/pr endpoint routing."""
+    from app.db import insert_run
+
+    # Unknown runs are 404 before GitHub is even considered
+    assert client.post("/runs/run_missing_123/pr").status_code == 404
+
+    insert_run("run_dummy_123", "task", final_status="success")
     with patch("app.github_agent.IS_GITHUB_CONFIGURED", False):
         resp = client.post("/runs/run_dummy_123/pr")
         assert resp.status_code == 200

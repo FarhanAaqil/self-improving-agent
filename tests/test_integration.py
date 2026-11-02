@@ -55,3 +55,19 @@ def test_integration_gating_behavior():
     """Verify that gating check properly identifies presence or absence of API credentials."""
     assert isinstance(_has_groq_key(), bool)
     assert isinstance(_is_docker_available(), bool)
+
+
+@pytest.mark.sandbox
+@pytest.mark.skipif(not _is_docker_available(), reason="Docker daemon not active")
+def test_offline_demo_mode_runs_the_whole_repair_loop_in_the_sandbox():
+    """FAKE_LLM scripts the model; everything else (tests, sandbox, repair, review) is real."""
+    from unittest.mock import patch
+
+    with patch("app.llm.FAKE_LLM", True):
+        resp = client.post("/generate-and-repair", json={"task_description": "Write add(a, b) returning the sum"})
+    run = resp.json()
+    assert run["final_status"] == "success"
+    first, second = run["attempts"]
+    assert first["success"] is False and first["tests_total"] == 3
+    assert "subtracted" in first["critique_reasoning"]
+    assert second["success"] is True and second["tests_passed"] == 3 and second["sandboxed"] is True

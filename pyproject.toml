@@ -59,3 +59,13 @@ markers = [
     "integration: marks tests requiring real Groq API key and Docker (deselect with -m 'not integration')",
     "sandbox: marks adversarial sandbox isolation tests",
 ]
+
+[tool.coverage.run]
+source = ["app", "eval"]
+# Attack scripts execute inside the Docker sandbox, never in the test process
+omit = ["app/adversarial/*"]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = false
+skip_covered = true

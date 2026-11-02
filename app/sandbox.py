@@ -26,6 +26,8 @@ SANDBOX_CPUS = os.getenv("SANDBOX_CPUS", "0.5")
 SANDBOX_PIDS = os.getenv("SANDBOX_PIDS", "64")
 
 _DOCKER_CHECK_TTL = 30.0
+# A failed probe is retried soon: a busy daemon shouldn't look "gone" for half a minute
+_DOCKER_RETRY_TTL = 3.0
 _docker_state: dict = {"ok": False, "checked_at": 0.0}
 _docker_lock = threading.Lock()
 _slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENT_SANDBOXES))
@@ -34,10 +36,12 @@ _slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENT_SANDBOXES))
 def _is_docker_available() -> bool:
     """Cached `docker info` probe so health checks and runs don't pay ~1s each time."""
     with _docker_lock:
-        if time.monotonic() - _docker_state["checked_at"] < _DOCKER_CHECK_TTL:
+        ttl = _DOCKER_CHECK_TTL if _docker_state["ok"] else _DOCKER_RETRY_TTL
+        if time.monotonic() - _docker_state["checked_at"] < ttl:
             return _docker_state["ok"]
         try:
-            res = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
+            # `version` only needs the API to answer; `info` gathers stats and can be slow under load
+            res = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"], capture_output=True, timeout=15)
             ok = res.returncode == 0
         except Exception:
             ok = False
@@ -93,6 +97,15 @@ def _result(success, output, error, exit_code, latency_ms, sandboxed) -> dict:
     }
 
 
+def _record(result: dict) -> dict:
+    from app.observability import metrics
+
+    outcome = "timeout" if "timed out" in (result.get("error") or "") else ("ok" if result["success"] else "error")
+    metrics.inc("agent_sandbox_executions_total", outcome=outcome, sandboxed=str(result["sandboxed"]).lower())
+    metrics.inc("agent_sandbox_seconds_sum", (result.get("latency_ms") or 0) / 1000)
+    return result
+
+
 def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
     """
     Execute Python inside a locked-down Docker container. Refuses to run when Docker
@@ -101,9 +114,9 @@ def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
     """
     with _slots:
         if _is_docker_available():
-            return _run_docker(code, timeout)
+            return _record(_run_docker(code, timeout))
         if ALLOW_UNSAFE_HOST_SUBPROCESS:
-            return _run_subprocess_fallback(code, timeout)
+            return _record(_run_subprocess_fallback(code, timeout))
         return _result(
             False,
             None,
