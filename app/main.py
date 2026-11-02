@@ -7,16 +7,17 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Security
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
 from app.code_security_audit import CodeSecurityAudit
 from app.config import (
+    ALLOW_CODE_OVERRIDE,
     ALLOWED_ORIGINS,
-    API_KEY,
+    AVAILABLE_MODELS,
+    CRITIQUE_CONFIDENCE_THRESHOLD,
     MODEL,
     RESULTS_DIR,
     SANDBOX_TIMEOUT,
@@ -49,6 +50,7 @@ from app.schemas import (
     GenerateRequest,
     RunOut,
 )
+from app.security import auth_mode, rate_limited, verify_api_access
 from app.test_agent import generate_unit_tests
 
 logger = logging.getLogger("self_improving_agent")
@@ -74,9 +76,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,  # auth is header-based; cookies are never needed
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
 
@@ -89,54 +91,20 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: https:; "
-        "connect-src 'self' http://localhost:* http://127.0.0.1:* https:;"
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self';"
     )
     if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if request.url.path.startswith(("/generate", "/execute", "/runs", "/eval")):
         response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
-
-
-# Optional API Key Authentication
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-bearer_scheme = HTTPBearer(auto_error=False)
-
-
-def verify_api_access(
-    header_key: Optional[str] = Security(api_key_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
-):
-    """
-    Verify access using API_KEY if configured in environment.
-    Supports X-API-Key header or Authorization: Bearer <token>.
-    If API_KEY is unset or a placeholder, permits requests for frictionless local development.
-    """
-    configured_key = API_KEY
-
-    if not configured_key or str(configured_key).strip().lower() in (
-        "",
-        "your-secret-key-here",
-        "your-api-key-here",
-        "your-secret-api-key-here",
-        "placeholder",
-        "none",
-        "false",
-    ):
-        return True
-
-    provided_token = header_key or (bearer.credentials if bearer else None)
-    if not provided_token or provided_token != configured_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized: Invalid or missing API key (X-API-Key or Bearer token).",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return True
 
 
 # ── System ───────────────────────────────────────────────────
@@ -151,6 +119,10 @@ def health_check():
         "docker_available": _is_docker_available(),
         "demo_mode": DEMO_MODE,
         "github_configured": IS_GITHUB_CONFIGURED,
+        "auth": auth_mode(),
+        "code_override_enabled": ALLOW_CODE_OVERRIDE,
+        "models": AVAILABLE_MODELS,
+        "default_model": MODEL,
     }
 
 
@@ -159,7 +131,7 @@ def health_check():
 @app.post(
     "/generate",
     response_model=GenerateOut,
-    dependencies=[Depends(verify_api_access)],
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["Agent"],
 )
 def generate_endpoint(req: GenerateRequest):
@@ -192,7 +164,7 @@ def generate_endpoint(req: GenerateRequest):
 @app.post(
     "/execute/{run_id}",
     response_model=ExecuteOut,
-    dependencies=[Depends(verify_api_access)],
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["Agent"],
 )
 def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
@@ -200,16 +172,28 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
     if not run:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
 
-    # Determine code to execute
-    code_to_run = None
-    attempt_num = len(run.get("attempts", []))
+    attempts = run.get("attempts", [])
+    # Every execution is recorded as a brand-new attempt, never reusing a number
+    attempt_num = max((a["attempt_number"] for a in attempts), default=0) + 1
 
     if req and req.code_override:
+        if not ALLOW_CODE_OVERRIDE:
+            raise HTTPException(
+                status_code=403,
+                detail="code_override is disabled on this server (ALLOW_CODE_OVERRIDE=false).",
+            )
         code_to_run = req.code_override
-        attempt_num += 1
-    elif run.get("attempts"):
-        target_idx = (req.attempt_number - 1) if (req and req.attempt_number) else -1
-        code_to_run = run["attempts"][target_idx]["generated_code"]
+    elif attempts:
+        if req and req.attempt_number:
+            source = next((a for a in attempts if a["attempt_number"] == req.attempt_number), None)
+            if source is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Attempt {req.attempt_number} does not exist in run '{run_id}'.",
+                )
+        else:
+            source = attempts[-1]
+        code_to_run = source["generated_code"]
     else:
         raise HTTPException(status_code=422, detail="No code found in this run to execute.")
 
@@ -247,7 +231,7 @@ def execute_endpoint(run_id: str, req: Optional[ExecuteRequest] = None):
 @app.post(
     "/generate-and-repair",
     response_model=RunOut,
-    dependencies=[Depends(verify_api_access)],
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["Agent"],
 )
 def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
@@ -323,7 +307,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
                     )
                     critique_conf = c_res.get("confidence")
                     critique_re = c_res.get("reasoning")
-                    if critique_conf is not None and critique_conf < 0.3:
+                    if critique_conf is not None and critique_conf < CRITIQUE_CONFIDENCE_THRESHOLD:
                         should_early_stop = True
                 except Exception:
                     critique_conf = None
@@ -443,7 +427,12 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest):
 
 # ── Endpoint 4: GET /runs/{run_id} & GET /runs ───────────────
 
-@app.get("/runs/{run_id}", response_model=RunOut, tags=["Runs"])
+@app.get(
+    "/runs/{run_id}",
+    response_model=RunOut,
+    dependencies=[Depends(verify_api_access)],
+    tags=["Runs"],
+)
 def get_run_endpoint(run_id: str):
     run = get_run_with_attempts(run_id)
     if not run:
@@ -451,7 +440,7 @@ def get_run_endpoint(run_id: str):
     return RunOut(**run)
 
 
-@app.get("/runs", tags=["Runs"])
+@app.get("/runs", dependencies=[Depends(verify_api_access)], tags=["Runs"])
 def list_runs_endpoint(limit: int = Query(50, ge=1, le=100)):
     return list_runs(limit=limit)
 
@@ -460,7 +449,7 @@ def list_runs_endpoint(limit: int = Query(50, ge=1, le=100)):
 
 @app.post(
     "/runs/{run_id}/pr",
-    dependencies=[Depends(verify_api_access)],
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["Runs"],
 )
 def create_pull_request_endpoint(run_id: str, repo: Optional[str] = None):
@@ -567,14 +556,14 @@ def _run_eval_job(eval_id: str, benchmark: str, subset_size: int):
 @app.post(
     "/eval/run",
     response_model=EvalRunOut,
-    dependencies=[Depends(verify_api_access)],
+    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["Evaluation"],
 )
 def run_eval_endpoint(req: EvalRunRequest, background_tasks: BackgroundTasks):
     eval_id = f"eval_{uuid.uuid4().hex[:8]}"
 
     # Dispatch to background task so the API client is not blocked for minutes
-    background_tasks.add_task(_run_eval_job, eval_id, req.benchmark, req.subset_size or 50)
+    background_tasks.add_task(_run_eval_job, eval_id, req.benchmark, req.subset_size)
 
     return EvalRunOut(
         eval_id=eval_id,
