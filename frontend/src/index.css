@@ -1,152 +1,176 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+  The Living Ledger — color tells the story of the agent's mind:
+  orange = working/thinking, cyan = memory, green = verified, red = broke and learning.
+  Values are RGB triplets consumed by tailwind.config.js.
+*/
 :root {
-  --color-bg: #F0F3EF;
-  --color-surface: #FFFFFF;
-  --color-surface-sunken: #E4E9E2;
-  --color-text-primary: #10241C;
-  --color-text-secondary: #52655A;
-  --color-text-tertiary: #93A399;
-  --color-accent: #FF5A1F;
-  --color-accent-hover: #E44E17;
-  --color-accent-subtle: #FFE8DC;
-  --color-cyan: #0E7C86;
-  --color-success: #1F7A4D;
-  --color-success-subtle: #DFF1E4;
-  --color-warning: #B5790A;
-  --color-warning-subtle: #FBEED6;
-  --color-danger: #C43B2A;
-  --color-danger-subtle: #FBE4DF;
-  --color-rule: #CBD3C7;
-  --color-rule-strong: #9FAD9A;
+  color-scheme: light;
+  --canvas: 240 243 239;          /* #F0F3EF */
+  --surface: 255 255 255;
+  --surface-sunken: 228 233 226;  /* #E4E9E2 */
+  --surface-raised: 250 251 249;
+  --ink: 16 36 28;                /* #10241C */
+  --ink-secondary: 82 101 90;     /* #52655A */
+  --ink-muted: 96 113 103;        /* readable meta text, 5:1 on canvas */
+  --ink-tertiary: 147 163 153;    /* #93A399 decoration only */
+  --ink-inverse: 240 243 239;
+  --accent: 255 90 31;            /* #FF5A1F */
+  --accent-hover: 228 78 23;      /* #E44E17 */
+  --accent-subtle: 255 232 220;   /* #FFE8DC */
+  --accent-ink: 184 58 12;        /* accent as text, AA on white */
+  --cyan: 14 124 134;             /* #0E7C86 */
+  --cyan-hover: 10 92 100;
+  --cyan-subtle: 224 243 245;
+  --success: 31 122 77;
+  --success-subtle: 223 241 228;
+  --warning: 181 121 10;
+  --warning-subtle: 251 238 214;
+  --danger: 196 59 42;
+  --danger-subtle: 251 228 223;
+  --border: 203 211 199;          /* #CBD3C7 */
+  --border-strong: 159 173 154;   /* #9FAD9A */
+  --chart-1: 228 83 28;           /* #E4531C validated vs white */
+  --chart-2: 0 140 153;           /* #008C99 validated vs white */
+  --chart-grid: 228 233 226;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  /* Night shift: the brand ink becomes the room */
+  --canvas: 16 36 28;             /* #10241C */
+  --surface: 22 48 38;            /* #163026 */
+  --surface-sunken: 12 28 22;
+  --surface-raised: 28 58 46;
+  --ink: 232 238 233;
+  --ink-secondary: 176 192 181;
+  --ink-muted: 150 168 156;
+  --ink-tertiary: 101 124 110;
+  --ink-inverse: 16 36 28;
+  --accent: 255 106 51;
+  --accent-hover: 255 128 82;
+  --accent-subtle: 58 36 24;
+  --accent-ink: 255 140 98;
+  --cyan: 63 184 194;
+  --cyan-hover: 110 206 214;
+  --cyan-subtle: 16 52 58;
+  --success: 86 196 140;
+  --success-subtle: 20 53 38;
+  --warning: 226 169 59;
+  --warning-subtle: 58 46 18;
+  --danger: 240 106 88;
+  --danger-subtle: 61 27 23;
+  --border: 42 68 56;
+  --border-strong: 66 98 83;
+  --chart-1: 242 88 31;           /* #F2581F validated vs #163026 */
+  --chart-2: 31 163 174;          /* #1FA3AE validated vs #163026 */
+  --chart-grid: 34 62 50;
 }
 
 @layer base {
-  * {
-    border-radius: 0px !important;
-    box-sizing: border-box;
-  }
-
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    background-color: var(--color-bg);
-    color: var(--color-text-primary);
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-canvas text-ink font-sans antialiased;
+    min-height: 100vh;
   }
 
-  code, pre, kbd, .font-mono {
-    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  code, pre, kbd, samp {
+    @apply font-mono;
   }
 
-  /* Custom scrollbar — subtle, matches the design language */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: var(--color-surface-sunken);
+    background: rgb(var(--surface-sunken));
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-rule-strong);
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-tertiary);
+    background: rgb(var(--border-strong));
   }
 
-  /* Focus ring — orange accent outline for accessibility */
   :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
   }
 
-  /* Selection colour */
   ::selection {
-    background: var(--color-accent-subtle);
-    color: var(--color-text-primary);
+    background: rgb(var(--accent) / 0.25);
   }
 }
 
-/* Ruled Gutter Rail: ~48px wide with tick marks at 28px intervals */
-.ruled-gutter-pattern {
-  background-color: var(--color-surface-sunken);
-  background-image: 
-    linear-gradient(to right, transparent 40px, var(--color-rule-strong) 40px, var(--color-rule-strong) 48px),
-    repeating-linear-gradient(to bottom, transparent, transparent 27px, var(--color-rule) 27px, var(--color-rule) 28px);
-}
-
-.code-gutter-tick {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent 23px,
-    var(--color-rule) 23px,
-    var(--color-rule) 24px
-  );
-}
-
-/* Subtle canvas grid — barely visible texture for the main background */
-.canvas-grid {
-  background-image:
-    linear-gradient(var(--color-rule) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-rule) 1px, transparent 1px);
-  background-size: 32px 32px;
-  background-position: -1px -1px;
-  opacity: 0.25;
-}
-
-/* Active Pipeline Reticle Breathing Pulse */
-@keyframes bracket-breathe {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
+@layer components {
+  .panel {
+    @apply bg-surface border border-border;
   }
-  50% {
-    transform: scale(1.04);
-    opacity: 0.85;
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.14em] text-ink-muted;
   }
-}
-
-.animate-bracket-breathe {
-  animation: bracket-breathe 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-underline {
-  0%, 100% {
-    opacity: 1;
-    transform: scaleX(1);
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
-  50% {
-    opacity: 0.35;
-    transform: scaleX(0.8);
+  .btn-primary {
+    @apply btn bg-accent text-white hover:bg-accent-hover shadow-ledger-accent;
+  }
+  .btn-secondary {
+    @apply btn bg-surface text-ink border border-border-strong hover:bg-surface-sunken;
+  }
+  .btn-ghost {
+    @apply btn text-ink-secondary hover:text-ink hover:bg-surface-sunken;
+  }
+  .input {
+    @apply w-full bg-surface-sunken border border-border px-3 py-2 text-sm text-ink placeholder:text-ink-tertiary focus:outline-none focus:border-accent focus:bg-surface transition-colors;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 border font-mono text-[11px];
+  }
+  /* The ledger's ruled paper: faint horizontal rules every 28px */
+  .ruled {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 27px,
+      rgb(var(--border) / 0.45) 27px,
+      rgb(var(--border) / 0.45) 28px
+    );
+  }
+  .grid-paper {
+    background-image:
+      linear-gradient(rgb(var(--border) / 0.35) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--border) / 0.35) 1px, transparent 1px);
+    background-size: 32px 32px;
   }
 }
 
-.animate-pulse-underline {
-  animation: pulse-underline 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
+/* Syntax highlighting (lib/highlight.ts) */
+.tok-keyword { color: rgb(var(--accent-ink)); font-weight: 600; }
+.tok-string { color: rgb(var(--success)); }
+.tok-comment { color: rgb(var(--ink-muted)); font-style: italic; }
+.tok-number { color: rgb(var(--warning)); }
+.tok-builtin { color: rgb(var(--cyan)); }
+.tok-def { color: rgb(var(--ink)); font-weight: 700; }
+.tok-decorator { color: rgb(var(--cyan)); }
 
-/* Slide-in for new runs appearing */
-@keyframes slide-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
+/* Motion has meaning; respect people who asked for less of it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
-
-.animate-slide-in {
-  animation: slide-in-up 0.25s ease-out forwards;
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
-

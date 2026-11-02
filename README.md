@@ -9,7 +9,7 @@
 [![CI](https://github.com/FarhanAaqil/self-improving-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/FarhanAaqil/self-improving-agent/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
-![React](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TS-61DAFB?style=flat&logo=react&logoColor=black)
+![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20TS-61DAFB?style=flat&logo=react&logoColor=black)
 ![Docker](https://img.shields.io/badge/Sandbox-Docker-2496ED?style=flat&logo=docker&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Qwen3%20%2F%20gpt--oss-F55036?style=flat)
 ![ChromaDB](https://img.shields.io/badge/Memory-ChromaDB-orange?style=flat)
@@ -17,61 +17,49 @@
 
 ---
 
-## 📸 Product Tour & Demos
+## 📸 Product Tour: "The Living Ledger"
 
-Explore the core workflows and interfaces of the CODE_AGENT verification ledger.
+The interface shows the agent thinking, remembering and verifying. Color carries meaning throughout: **orange** = working, **cyan** = memory, **green** = verified, **red** = broke and learning. All screenshots below are real captures of the app running against Groq and the Docker sandbox.
 
-### 1. Task Synthesis & Live Viewfinder (`/`)
-Interactive developer workspace where users submit task specifications with prompt quick-picks, model selection (served live from `/models`), and an active pipeline viewfinder.
+### 1. Workbench (`/`)
+Describe a task and press <kbd>Ctrl</kbd>+<kbd>Enter</kbd>. Template cards, a preview of what happens next, and (as you type) a cyan card that tells you when the agent remembers a similar task.
 
-<p align="center">
-  <img src="assets/screenshots/01-new-run.png" alt="New Run Workspace" width="100%" />
-</p>
+<p align="center"><img src="assets/screenshots/01-new-run.png" alt="Workbench" width="100%" /></p>
 
----
+### 2. Run Theater, live (`/runs/{id}`)
+Every step streams in over server-sent events: memory recall, spec tests written first, code, the sandbox run, the diagnosis when something breaks, and the repair. The agent narrates in plain first-person sentences.
 
-### 2. Autonomous Multi-Attempt Execution & Live Stepper
-Watch the multi-agent critique loop synthesize code, mount it into an ephemeral cgroup container, capture tracebacks upon failure, and automatically repair errors in real time.
+<p align="center"><img src="assets/screenshots/02-live-execution.png" alt="Live run" width="100%" /></p>
 
-<p align="center">
-  <img src="assets/screenshots/02-live-execution.png" alt="Live Execution Stepper" width="100%" />
-</p>
+### 3. Verified, with a certificate
+When every spec test passes, the run gets a stamp and a certificate: tests, traced coverage, bandit findings, complexity, a quality radar, and actions to download, fork and edit, or open a PR. Switch tabs to see a diff between attempts or the spec tests themselves.
 
----
+<p align="center"><img src="assets/screenshots/04-run-detail.png" alt="Verification certificate" width="100%" /></p>
 
-### 3. Audit Ledger & Historical Runs (`/history`)
-Comprehensive audit ledger of all generated programs with status filter pills, search bar, execution pass/fail metrics, quality ratings (out of 10), attempt counters, and pagination.
+### 4. Ledger (`/history`)
+Every run on the record, with server-side search, status filters and pagination. It switches to cards on phones.
 
-<p align="center">
-  <img src="assets/screenshots/03-run-history.png" alt="Audit Ledger and Run History" width="100%" />
-</p>
+<p align="center"><img src="assets/screenshots/03-run-history.png" alt="Ledger" width="100%" /></p>
 
----
+### 5. Benchmarks (`/eval`)
+Official HumanEval results run in the sandbox: single-shot baseline vs. the repairing agent, with 95% confidence intervals and a per-problem grid. You can start a new benchmark and watch its progress live.
 
-### 4. Deep Run Inspection, Quality Audit & Diff View (`/runs/{run_id}`)
-Examine individual attempts with stdout/stderr traces, AST security audit results, algorithmic complexity profiling, unified code diffs, one-click code download, and automated GitHub Pull Request creation.
+<p align="center"><img src="assets/screenshots/05-eval-dashboard.png" alt="Benchmarks" width="100%" /></p>
 
-<p align="center">
-  <img src="assets/screenshots/04-run-detail.png" alt="Deep Run Inspection" width="100%" />
-</p>
+### 6. Security (`/security`)
+The exact sandbox flags, read live from the server, each explained in plain words. **Try to break it** runs real attack scripts (fork bomb, memory bomb, secret theft, /tmp execution, privilege escalation, and more) and shows how each one was stopped.
 
----
+<p align="center"><img src="assets/screenshots/06-security-threat-model.png" alt="Security" width="100%" /></p>
 
-### 5. HumanEval Benchmark Dashboard (`/eval`)
-Benchmark telemetry comparing a single-shot baseline with the repairing agent on official HumanEval, with confidence intervals.
+### 7. Night shift & mobile
+A dark theme built from the brand ink, and a layout that works down to phone width.
 
 <p align="center">
-  <img src="assets/screenshots/05-eval-dashboard.png" alt="Evaluation Dashboard" width="100%" />
+  <img src="assets/screenshots/07-night-shift.png" alt="Dark theme" width="72%" />
+  <img src="assets/screenshots/08-mobile.png" alt="Mobile" width="24%" />
 </p>
 
----
-
-### 6. Security Architecture & Threat Model (`/security`)
-Official cryptographic sandbox specification detailing kernel cgroups, network disconnection (`--network none`), read-only root filesystems, and static AST security audits.
-
-<p align="center">
-  <img src="assets/screenshots/06-security-threat-model.png" alt="Security Architecture and Threat Model" width="100%" />
-</p>
+Also in the app: **Memory** (`/memory`) to browse, search, pin and delete what the agent learned; **Settings** for theme, motion, default model and API key; and a <kbd>Ctrl</kbd>+<kbd>K</kbd> command palette.
 
 ---
 

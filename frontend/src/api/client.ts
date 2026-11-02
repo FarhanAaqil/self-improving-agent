@@ -1,21 +1,29 @@
-// Typed fetch wrappers for FastAPI backend endpoints
+// Typed fetch wrappers for the FastAPI backend.
 
+import { createSseParser } from '../lib/sse'
 import type {
+  AttackInfo,
+  AttackResult,
   EvalResultOut,
   EvalRunOut,
   EvalRunRequest,
-  ExecuteOut,
-  ExecuteRequest,
+  EvalStatus,
   GenerateAndRepairRequest,
-  GenerateOut,
-  GenerateRequest,
   HealthResponse,
+  MemoryItem,
+  MemoryPage,
+  MemoryStats,
   PrResponse,
+  RunAccepted,
+  RunEvent,
   RunOut,
   RunPage,
+  SandboxConfig,
+  BenchmarkResult,
 } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
+const API_KEY_STORAGE = 'agent_api_key'
 
 export class ApiError extends Error {
   status: number
@@ -28,8 +36,6 @@ export class ApiError extends Error {
     this.detail = detail
   }
 }
-
-const API_KEY_STORAGE = 'agent_api_key'
 
 // The key lives in sessionStorage only: never baked into the bundle, gone when the tab closes.
 export function getStoredApiKey(): string | null {
@@ -53,101 +59,114 @@ export function isAuthError(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 401 || err.status === 503)
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`
+function authHeaders(): Record<string, string> {
   const apiKey = getStoredApiKey()
+  return apiKey ? { 'X-API-Key': apiKey } : {}
+}
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(apiKey ? { 'X-API-Key': apiKey } : {}),
-    ...((options.headers as Record<string, string>) || {}),
-  }
-
-  const res = await fetch(url, { ...options, headers })
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+      ...((options.headers as Record<string, string>) || {}),
+    },
+  })
 
   if (!res.ok) {
-    let errorDetail = res.statusText
+    let detail = res.statusText
     try {
       const data = await res.json()
-      if (data.detail) {
-        errorDetail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
-      }
+      if (data.detail) detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
     } catch {
-      // Body wasn't JSON; keep statusText
+      // body wasn't JSON
     }
-    throw new ApiError(res.status, `API request failed (${res.status}): ${errorDetail}`, errorDetail)
+    throw new ApiError(res.status, detail || `Request failed (${res.status})`, detail)
   }
-
   return res.json()
 }
 
+const post = <T>(endpoint: string, body?: unknown) =>
+  request<T>(endpoint, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+
 // ── System ──
+export const getHealth = () => request<HealthResponse>('/health')
+export const getSandboxConfig = () => request<SandboxConfig>('/sandbox/config')
+export const listAttacks = () => request<{ items: AttackInfo[] }>('/sandbox/attacks')
+export const runAttack = (name: string) => post<AttackResult>(`/sandbox/attacks/${encodeURIComponent(name)}`)
 
-export function getHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>('/health')
-}
+// ── Runs ──
+export const startRun = (req: GenerateAndRepairRequest) => post<RunAccepted>('/runs', req)
+export const getRun = (runId: string) => request<RunOut>(`/runs/${encodeURIComponent(runId)}`)
 
-// ── Endpoint 1: POST /generate ──
-
-export function generateCode(req: GenerateRequest): Promise<GenerateOut> {
-  return request<GenerateOut>('/generate', {
-    method: 'POST',
-    body: JSON.stringify(req),
+export function listRuns(params: { page?: number; pageSize?: number; q?: string; status?: string } = {}) {
+  const search = new URLSearchParams({
+    page: String(params.page ?? 1),
+    page_size: String(params.pageSize ?? 20),
   })
+  if (params.q) search.set('q', params.q)
+  if (params.status && params.status !== 'all') search.set('status', params.status)
+  return request<RunPage>(`/runs?${search}`)
 }
 
-// ── Endpoint 2: POST /execute/{run_id} ──
+export function openRunPr(runId: string): Promise<PrResponse> {
+  return post<PrResponse>(`/runs/${encodeURIComponent(runId)}/pr`)
+}
 
-export function executeRun(runId: string, req?: ExecuteRequest): Promise<ExecuteOut> {
-  return request<ExecuteOut>(`/execute/${encodeURIComponent(runId)}`, {
-    method: 'POST',
-    body: req ? JSON.stringify(req) : undefined,
+/**
+ * Follow a run's server-sent events. Resolves when the stream ends (normally after
+ * `run_finished`). Abort the signal to stop listening.
+ */
+export async function streamRunEvents(
+  runId: string,
+  onEvent: (event: RunEvent) => void,
+  options: { signal?: AbortSignal; lastEventId?: number } = {},
+): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runs/${encodeURIComponent(runId)}/events`, {
+    headers: {
+      Accept: 'text/event-stream',
+      ...authHeaders(),
+      ...(options.lastEventId ? { 'Last-Event-ID': String(options.lastEventId) } : {}),
+    },
+    signal: options.signal,
   })
-}
+  if (!res.ok || !res.body) throw new ApiError(res.status, `Event stream failed (${res.status})`)
 
-// ── Endpoint 3: POST /generate-and-repair ──
-
-export function generateAndRepair(req: GenerateAndRepairRequest): Promise<RunOut> {
-  return request<RunOut>('/generate-and-repair', {
-    method: 'POST',
-    body: JSON.stringify(req),
+  const parser = createSseParser((msg) => {
+    if (msg.id === null) return
+    let payload: Record<string, unknown> = {}
+    try {
+      payload = msg.data ? JSON.parse(msg.data) : {}
+    } catch {
+      payload = {}
+    }
+    onEvent({ event_id: msg.id, type: msg.event, payload })
   })
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    parser.feed(value)
+  }
 }
 
-export function startRun(req: GenerateAndRepairRequest): Promise<{ run_id: string; status: string; events_url: string }> {
-  return request('/runs', { method: 'POST', body: JSON.stringify(req) })
+// ── Memory ──
+export function listMemory(params: { kind?: string; limit?: number } = {}) {
+  const search = new URLSearchParams({ limit: String(params.limit ?? 100) })
+  if (params.kind && params.kind !== 'all') search.set('kind', params.kind)
+  return request<MemoryPage>(`/memory?${search}`)
 }
+export const getMemoryStats = () => request<MemoryStats>('/memory/stats')
+export const searchMemory = (q: string, threshold = 0.3) =>
+  request<{ items: MemoryItem[] }>(`/memory/search?${new URLSearchParams({ q, threshold: String(threshold) })}`)
+export const deleteMemory = (id: string) => request<{ deleted: string }>(`/memory/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const pinMemory = (id: string, pinned: boolean) =>
+  post<{ id: string; pinned: boolean }>(`/memory/${encodeURIComponent(id)}/pin?pinned=${pinned}`)
 
-// ── Endpoint 4: GET /runs/{run_id} & GET /runs ──
-
-export function getRun(runId: string): Promise<RunOut> {
-  return request<RunOut>(`/runs/${encodeURIComponent(runId)}`)
-}
-
-export function listRuns(pageSize = 20, page = 1): Promise<RunPage> {
-  return request<RunPage>(`/runs?page=${page}&page_size=${pageSize}`)
-}
-
-// ── Endpoint 5: GET /eval/latest ──
-
-export function getLatestEval(): Promise<EvalResultOut> {
-  return request<EvalResultOut>('/eval/latest')
-}
-
-// ── Endpoint 6: POST /eval/run ──
-
-export function triggerEval(req: EvalRunRequest): Promise<EvalRunOut> {
-  return request<EvalRunOut>('/eval/run', {
-    method: 'POST',
-    body: JSON.stringify(req),
-  })
-}
-
-// ── PR Automation: POST /runs/{run_id}/pr ──
-
-export function openRunPr(runId: string, repo?: string): Promise<PrResponse> {
-  const query = repo ? `?repo=${encodeURIComponent(repo)}` : ''
-  return request<PrResponse>(`/runs/${encodeURIComponent(runId)}/pr${query}`, {
-    method: 'POST',
-  })
-}
+// ── Evaluation ──
+export const getLatestEval = () => request<EvalResultOut>('/eval/latest')
+export const getEvalHistory = () => request<{ items: BenchmarkResult[] }>('/eval/history')
+export const getEvalStatus = (evalId: string) => request<EvalStatus>(`/eval/status/${encodeURIComponent(evalId)}`)
+export const triggerEval = (req: EvalRunRequest) => post<EvalRunOut>('/eval/run', req)
