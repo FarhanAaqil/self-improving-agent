@@ -16,7 +16,7 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number
   detail?: string
 
@@ -28,12 +28,33 @@ class ApiError extends Error {
   }
 }
 
+const API_KEY_STORAGE = 'agent_api_key'
+
+// The key lives in sessionStorage only: never baked into the bundle, gone when the tab closes.
+export function getStoredApiKey(): string | null {
+  try {
+    return sessionStorage.getItem(API_KEY_STORAGE)
+  } catch {
+    return null
+  }
+}
+
+export function setStoredApiKey(key: string | null): void {
+  try {
+    if (key) sessionStorage.setItem(API_KEY_STORAGE, key)
+    else sessionStorage.removeItem(API_KEY_STORAGE)
+  } catch {
+    // storage blocked (private mode); the key just won't persist
+  }
+}
+
+export function isAuthError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.status === 503)
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`
-  const apiKey =
-    typeof window !== 'undefined'
-      ? (localStorage.getItem('agent_api_key') || (import.meta.env.VITE_API_KEY as string | undefined))
-      : undefined
+  const apiKey = getStoredApiKey()
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

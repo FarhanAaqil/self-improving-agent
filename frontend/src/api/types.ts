@@ -94,6 +94,17 @@ export interface HealthResponse {
   docker_available: boolean
   demo_mode?: boolean
   github_configured?: boolean
+  auth?: 'key' | 'open' | 'locked'
+  code_override_enabled?: boolean
+  models?: string[]
+  default_model?: string
+}
+
+// Statuses after which a run will never change again
+export const TERMINAL_STATUSES = ['success', 'failed', 'max_retries_exceeded', 'early_stopped']
+
+export function isTerminalStatus(status?: string | null): boolean {
+  return Boolean(status && TERMINAL_STATUSES.includes(status))
 }
 
 export interface PrResponse {

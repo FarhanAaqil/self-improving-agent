@@ -1,7 +1,11 @@
 # render.yaml
 # ─────────────────────────────────────────────────────────────
-# Render Web Service deployment configuration.
-# Explicitly labeled as a DEMO deployment.
+# Render Web Service deployment configuration (DEMO).
+#
+# Render does not provide a Docker daemon, so the sandbox cannot run there.
+# Code execution is therefore refused on this deployment rather than falling
+# back to running model output on the host. Point SANDBOX at a machine with
+# Docker (or a remote sandbox provider) to enable execution.
 # ─────────────────────────────────────────────────────────────
 
 services:
@@ -11,12 +15,17 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
+    healthCheckPath: /health
     envVars:
+      - key: APP_ENV
+        value: "production"
       - key: DEMO_MODE
         value: "true"
       - key: MODEL
         value: "llama-3.3-70b-versatile"
       - key: GROQ_API_KEY
+        sync: false
+      - key: API_KEY
         sync: false
       - key: SANDBOX_TIMEOUT
         value: "10"
@@ -26,7 +35,10 @@ services:
         value: "FarhanAaqil/self-improving-agent"
       - key: GITHUB_TOKEN
         sync: false
+      # Never true on a public host: it would run untrusted code next to your secrets.
       - key: ALLOW_UNSAFE_HOST_SUBPROCESS
-        value: "true"
-      - key: API_KEY
-        sync: false
+        value: "false"
+      - key: ALLOW_CODE_OVERRIDE
+        value: "false"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "10"

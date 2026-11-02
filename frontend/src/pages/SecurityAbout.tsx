@@ -7,17 +7,17 @@ export default function SecurityAbout() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 bg-accent/10 border border-accent/30 text-accent font-mono text-[10px] uppercase font-bold tracking-wider">
-                AST & CGROUP COMPLIANCE
+                DOCKER SANDBOX
               </span>
               <span className="px-2 py-0.5 bg-cyan/10 border border-cyan/30 text-cyan font-mono text-[10px] uppercase font-bold tracking-wider">
-                VERIFIED SANDBOX
+                ADVERSARIALLY TESTED
               </span>
             </div>
             <h1 className="text-2xl font-mono font-bold tracking-tight text-ink">
               Security Architecture & Threat Model
             </h1>
             <p className="text-xs text-ink-secondary leading-normal max-w-lg font-sans">
-              Technical specifications of container isolation, host sandbox boundaries, static AST verification heuristics, and execution constraints.
+              How generated code is isolated, which limits apply, and which attacks the test suite proves are blocked.
             </p>
           </div>
           <div className="relative shrink-0 border border-border bg-[#10241C] p-1 self-center sm:self-auto">
@@ -42,8 +42,7 @@ export default function SecurityAbout() {
           In an autonomous code generation system, model output must be treated as untrusted arbitrary code. Simple process spawning via Python <code className="px-1.5 py-0.5 bg-surface-sunken border border-border text-xs font-mono text-ink">subprocess.run()</code> or in-memory <code className="px-1.5 py-0.5 bg-surface-sunken border border-border text-xs font-mono text-ink">exec()</code> exposes the host system to file system traversal, network exfiltration, persistence, and algorithmic resource exhaustion.
         </p>
         <p className="text-sm text-ink-secondary">
-          Every synthesized script is mounted read-only into an ephemeral Docker container and executed under strict kernel-level cgroup constraints. If Docker is unavailable, the agent fails closed by default rather than running unverified code on the host.
-        </p>
+          Every synthesized script is piped over stdin into an ephemeral Docker container that runs as an unprivileged user with no network, no Linux capabilities, a process limit, and a read-only root filesystem. If Docker is unavailable, execution is refused rather than run on the host. </p>
       </section>
 
       <hr className="border-border" />
@@ -68,7 +67,7 @@ export default function SecurityAbout() {
           <div className="space-y-1">
             <div className="font-mono font-semibold text-ink flex items-center justify-between text-xs">
               <span>Resource & memory bounds</span>
-              <code className="text-cyan font-bold">--memory=256m --cpus=0.5</code>
+              <code className="text-cyan font-bold">--memory=256m --memory-swap=256m --cpus=0.5 --pids-limit=64</code>
             </div>
             <p className="text-xs text-ink-secondary">
               Linux kernel cgroups bound memory and CPU usage. Memory consumption exceeding 256MB triggers an immediate kernel OOM killer termination, neutralizing fork bombs and memory exhaustion loops.
@@ -78,10 +77,20 @@ export default function SecurityAbout() {
           <div className="space-y-1">
             <div className="font-mono font-semibold text-ink flex items-center justify-between text-xs">
               <span>Read-only root filesystem</span>
-              <code className="text-cyan font-bold">--read-only --tmpfs /tmp:rw,size=64m</code>
+              <code className="text-cyan font-bold">--read-only --tmpfs /tmp:noexec,nosuid</code>
             </div>
             <p className="text-xs text-ink-secondary">
               The container filesystem is mounted strictly read-only. Only a volatile 64MB RAM-backed tmpfs mount at <code className="px-1.5 py-0.5 bg-surface-sunken border border-border text-xs font-mono text-ink">/tmp</code> permits scratch files, preventing persistent file system modifications.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="font-mono font-semibold text-ink flex items-center justify-between text-xs">
+              <span>Privileges dropped</span>
+              <code className="text-cyan font-bold">--user 65534 --cap-drop ALL --no-new-privileges</code>
+            </div>
+            <p className="text-xs text-ink-secondary">
+              Code runs as the unprivileged <code className="px-1.5 py-0.5 bg-surface-sunken border border-border text-ink font-mono">nobody</code> user with every Linux capability removed, and setuid binaries cannot raise privileges.
             </p>
           </div>
 
@@ -108,11 +117,14 @@ export default function SecurityAbout() {
           The container boundary is verified continuously through regression test fixtures in <code className="px-1.5 py-0.5 bg-surface-sunken border border-border text-xs font-mono text-ink">tests/test_sandbox_isolation.py</code>:
         </p>
         <ul className="text-xs text-ink-secondary space-y-1.5 list-disc list-inside font-mono">
-          <li>outbound_network.py — attempts HTTP exfiltration via urllib to external IP</li>
-          <li>read_host_file.py — attempts directory traversal to host /etc/shadow or /etc/passwd</li>
-          <li>fork_bomb.py — initiates recursive process spawning to exhaust memory</li>
-          <li>write_outside_tmp.py — attempts binary drops to /usr/local/bin and /bin</li>
-          <li>outlive_timeout.py — overrides SIGTERM/SIGALRM to loop indefinitely</li>
+          <li>outbound_network.py — HTTP request to the internet</li>
+          <li>host_secrets.py — looks for the Docker socket, server API keys and host home dirs</li>
+          <li>fork_bomb.py — real os.fork() bomb, stopped by the pids limit</li>
+          <li>memory_exhaustion.py — allocates 1GB, capped by the memory limit</li>
+          <li>write_outside_tmp.py — writes to the read-only root filesystem</li>
+          <li>tmp_exec.py — drops and executes a script in /tmp (noexec)</li>
+          <li>privilege.py — checks for root and tries setuid(0)</li>
+          <li>outlive_timeout.py — spawns a child and hangs past the host timeout</li>
         </ul>
       </section>
 

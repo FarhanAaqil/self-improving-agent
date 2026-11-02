@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { generateAndRepair, getHealth, getRun } from '../api/client'
-import type { RunOut } from '../api/types'
+import { isTerminalStatus, type RunOut } from '../api/types'
 import AttemptCard from '../components/AttemptCard'
 import PipelineStepper, { type PipelineStep } from '../components/PipelineStepper'
 import StatusBadge from '../components/StatusBadge'
@@ -65,7 +65,7 @@ export default function NewRun() {
     enabled: Boolean(activeRunId),
     refetchInterval: (query) => {
       const state = query.state.data
-      if (state && ['success', 'failed', 'max_retries_exceeded'].includes(state.final_status)) {
+      if (state && isTerminalStatus(state.final_status)) {
         return false
       }
       return 1500
@@ -111,9 +111,7 @@ export default function NewRun() {
   const displayRun = polledRun || runMutation.data
   const latestAttempt = displayRun?.attempts[displayRun.attempts.length - 1]
   const isSuccess = displayRun?.final_status === 'success'
-  const isComplete =
-    displayRun?.final_status &&
-    ['success', 'failed', 'max_retries_exceeded'].includes(displayRun.final_status)
+  const isComplete = isTerminalStatus(displayRun?.final_status)
 
   // Dynamic Pipeline Steps
   const pipelineSteps: PipelineStep[] = [
@@ -215,8 +213,8 @@ export default function NewRun() {
 
         <div className="hidden sm:flex items-center gap-2 font-mono text-[11px] text-ink-tertiary">
           <span className="px-2 py-1 bg-surface border border-border text-ink-secondary flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 bg-status-success" />
-            cgroup: isolated
+            <span className={`h-1.5 w-1.5 ${health?.docker_available ? 'bg-status-success' : 'bg-status-danger'}`} />
+            {health?.docker_available ? 'sandbox: docker isolated' : 'sandbox: unavailable'}
           </span>
         </div>
       </div>
@@ -321,11 +319,12 @@ export default function NewRun() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full bg-surface-sunken border border-border p-2 text-ink font-mono focus:outline-none focus:border-accent"
                 >
-                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recommended)</option>
-                  <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (fast)</option>
-                  <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b</option>
-                  <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
-                  <option value="gemma2-9b-it">gemma2-9b-it</option>
+                  {(health?.models ?? [model]).map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                      {m === health?.default_model ? ' (default)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
