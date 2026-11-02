@@ -85,7 +85,8 @@ jobs:
   # ── End-to-end: real browser, real sandbox, scripted model ──
   e2e:
     name: End-to-end (Playwright)
-    runs-on: ubuntu-latest
+    # Pinned: Playwright's browser installer lags behind new Ubuntu releases
+    runs-on: ubuntu-24.04
     needs: [unit-tests, frontend]
     env:
       FAKE_LLM: "true"
