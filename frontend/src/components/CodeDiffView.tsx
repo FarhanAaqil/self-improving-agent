@@ -73,14 +73,15 @@ function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
 }
 
 export default function CodeDiffView({ attempts }: CodeDiffViewProps) {
+  // Hooks must run on every render, so they come before the early return
+  const [fromAttemptNum, setFromAttemptNum] = useState<number>(attempts[0]?.attempt_number ?? 1)
+  const [toAttemptNum, setToAttemptNum] = useState<number>(
+    attempts[attempts.length - 1]?.attempt_number ?? 1
+  )
+
   if (attempts.length < 2) {
     return null
   }
-
-  const [fromAttemptNum, setFromAttemptNum] = useState<number>(attempts[0].attempt_number)
-  const [toAttemptNum, setToAttemptNum] = useState<number>(
-    attempts[attempts.length - 1].attempt_number
-  )
 
   const fromAttempt = attempts.find((a) => a.attempt_number === fromAttemptNum) || attempts[0]
   const toAttempt =

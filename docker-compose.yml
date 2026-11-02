@@ -24,6 +24,8 @@ services:
       - "8000:8000"
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - APP_ENV=${APP_ENV:-development}
+      - API_KEY=${API_KEY:-}
       - DB_PATH=/data/agent.db
       - MEMORY_DIR=/data/memory_db
       - DEMO_MODE=${DEMO_MODE:-false}

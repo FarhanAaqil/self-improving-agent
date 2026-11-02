@@ -95,18 +95,26 @@ Executing untrusted, model-generated code on the host filesystem is dangerous. I
 |---|---|---|
 | **Network Quarantined** | `--network none` | Prevents data exfiltration, reverse shells, and malicious outbound requests |
 | **Filesystem Lockdown** | `--read-only` | Prevents overwriting host mount points, mutating binaries, or persistent backdoors |
-| **Ephemeral Scratch** | `--tmpfs /tmp:rw,noexec,nosuid,size=64m` | Provides temporary scratch space only; execution inside `/tmp` is disabled |
+| **Ephemeral Scratch** | `--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m` | Provides temporary scratch space only; execution inside `/tmp` is disabled |
 | **Memory Throttle** | `--memory=256m --memory-swap=256m` | Blocks memory exhaustion attacks and OOM crashes of the host kernel |
 | **CPU Throttle** | `--cpus=0.5` | Prevents CPU-spinning cryptominers and unbounded infinite loops |
-| **Host-Side Termination**| `subprocess.run(..., timeout=10)` | Host daemon forcefully terminates hanging processes regardless of in-script signal masks |
+| **Process Limit** | `--pids-limit 64` | Stops fork bombs before they reach the host |
+| **No Privileges** | `--user 65534:65534 --cap-drop ALL --security-opt no-new-privileges` | Runs as `nobody`, with no Linux capabilities and no way to regain them |
+| **No Host Paths** | code piped over stdin (`python -`) | Nothing from the host filesystem is mounted into the container |
+| **Host-Side Termination**| `subprocess.run(..., timeout=10)` + `docker kill` | Host daemon forcefully terminates hanging processes regardless of in-script signal masks |
+
+If Docker is not available the API **refuses to execute** instead of falling back to the host. API access is **fail-closed**: outside `APP_ENV=development`, every endpoint except `/health` requires `API_KEY`.
 
 ### Adversarial Test Suite
-The security perimeter is guarded by 5 automated adversarial test fixtures in `tests/fixtures/adversarial/`, executed in CI against live Docker daemons:
-1. **Outbound Network:** Attempts socket connections to external endpoints — blocked (`--network none`).
-2. **Host File Theft:** Attempts reading `/etc/passwd` and sensitive environment paths — blocked (`PermissionError`).
-3. **Fork Bomb:** Attempts recursive process spawning — bounded and terminated.
-4. **Filesystem Tampering:** Attempts writing outside `/tmp` — blocked (`OSError: Read-only file system`).
-5. **Outlive Host Parent:** Attempts spawning background sub-daemons — terminated by host-side process reaper.
+The security perimeter is guarded by 8 real attacks in `tests/fixtures/adversarial/`, executed in CI against a live Docker daemon. A test passes only when the attack is visibly stopped:
+1. **Outbound Network:** HTTP request to the internet — blocked (`--network none`).
+2. **Host Secrets:** Looks for the Docker socket, server API keys and host home directories — nothing visible.
+3. **Fork Bomb:** A real `os.fork()` loop — stopped by `--pids-limit`.
+4. **Memory Exhaustion:** Allocates 1GB — capped by `--memory`.
+5. **Filesystem Tampering:** Writes outside `/tmp` — blocked (read-only root).
+6. **`/tmp` Execution:** Drops and runs a script in `/tmp` — blocked (`noexec`).
+7. **Privilege Escalation:** Checks for root and tries `setuid(0)` — refused.
+8. **Outlive Host Parent:** Spawns a child and hangs — killed by the host-side timeout.
 
 ---
 
@@ -180,8 +188,8 @@ When a generation task exhausts all attempts or is marked unresolvable, `app/mem
 git clone https://github.com/FarhanAaqil/self-improving-agent.git
 cd self-improving-agent
 
-# Set your Groq API key in .env
-echo "GROQ_API_KEY=gsk_your_key_here" > .env
+# Copy the example env and add your Groq API key
+cp .env.example .env
 
 # Build and run the entire stack
 docker compose up --build
@@ -191,8 +199,9 @@ Navigate to `http://localhost:8000` to interact with the full React application.
 ### Option B: Local Development
 
 ```bash
-# 1. Install Python dependencies in editable mode
+# 1. Install Python dependencies in editable mode and create your .env
 pip install -e ".[dev]"
+cp .env.example .env   # APP_ENV=development keeps the API open locally
 
 # 2. Build the React frontend SPA
 cd frontend

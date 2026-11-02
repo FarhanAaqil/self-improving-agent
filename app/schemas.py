@@ -1,36 +1,69 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.config import AVAILABLE_MODELS
+
+MAX_TASK_CHARS = 4000
+MAX_CODE_CHARS = 50_000
+
+ReviewAgent = Literal[
+    "critique", "test", "tests", "performance", "security_audit", "security", "docs", "documentation"
+]
+
+
+def _check_model(value: str | None) -> str | None:
+    if value is not None and value not in AVAILABLE_MODELS:
+        raise ValueError(f"Unknown model '{value}'. Choose one of: {', '.join(AVAILABLE_MODELS)}")
+    return value
 
 # ── Request models ───────────────────────────────────────────
 
 class GenerateRequest(BaseModel):
-    task_description: str = Field(..., min_length=5, description="The task to generate Python code for")
+    task_description: str = Field(
+        ..., min_length=5, max_length=MAX_TASK_CHARS, description="The task to generate Python code for"
+    )
     model: str | None = Field(None, description="Override default Groq model")
+
+    @field_validator("model")
+    @classmethod
+    def _model_ok(cls, value: str | None) -> str | None:
+        return _check_model(value)
 
 
 class ExecuteRequest(BaseModel):
-    attempt_number: int | None = Field(None, description="Optional attempt number to execute (defaults to latest)")
-    code_override: str | None = Field(None, description="Execute arbitrary code within the run context")
-
-
-class GenerateAndRepairRequest(BaseModel):
-    task_description: str = Field(..., min_length=5)
-    max_attempts: int = Field(3, ge=1, le=10, description="Maximum repair attempts")
-    model: str | None = None
-    skip_agents: list[str] = Field(
-        default_factory=list,
-        description="Skip any review agent: 'test', 'performance', 'security_audit', 'docs'",
+    attempt_number: int | None = Field(
+        None, ge=1, description="Optional attempt number to execute (defaults to latest)"
+    )
+    code_override: str | None = Field(
+        None,
+        max_length=MAX_CODE_CHARS,
+        description="Execute caller-supplied code (requires ALLOW_CODE_OVERRIDE=true on the server)",
     )
 
 
+class GenerateAndRepairRequest(BaseModel):
+    task_description: str = Field(..., min_length=5, max_length=MAX_TASK_CHARS)
+    max_attempts: int = Field(3, ge=1, le=10, description="Maximum repair attempts")
+    model: str | None = None
+    skip_agents: list[ReviewAgent] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Skip any review agent: 'critique', 'test', 'performance', 'security_audit', 'docs'",
+    )
+
+    @field_validator("model")
+    @classmethod
+    def _model_ok(cls, value: str | None) -> str | None:
+        return _check_model(value)
+
+
 class EvalRunRequest(BaseModel):
-    benchmark: str = Field("humaneval", description="'humaneval' or 'custom'")
-    subset_size: int | None = Field(50, description="Number of problems to evaluate (default 50)")
-    skip_agents: list[str] = Field(default_factory=list)
+    benchmark: Literal["humaneval"] = Field("humaneval", description="Benchmark to run")
+    subset_size: int = Field(10, ge=1, le=50, description="Number of problems to evaluate")
 
 
 # ── Response models ──────────────────────────────────────────

@@ -9,11 +9,28 @@ import tempfile
 from typing import Any, Generator
 from unittest.mock import MagicMock
 
-import pytest
-from fastapi.testclient import TestClient
+# Isolate the whole suite from real state BEFORE any app module reads its config:
+# no writes to the developer's agent.db, results/, or ChromaDB, and no surprise auth.
+_SANDBOX_DIR = tempfile.mkdtemp(prefix="agent-tests-")
+os.environ["APP_ENV"] = "test"
+os.environ["DB_PATH"] = os.path.join(_SANDBOX_DIR, "agent.db")
+os.environ["RESULTS_DIR"] = os.path.join(_SANDBOX_DIR, "results")
+os.environ["MEMORY_DIR"] = os.path.join(_SANDBOX_DIR, "memory_db")
+os.environ["MEMORY_ENABLED"] = "false"
+os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
+os.environ.pop("API_KEY", None)
 
-from app.db import init_db
-from app.main import app
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.db import init_db  # noqa: E402
+from app.main import app  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_eval_jobs(monkeypatch):
+    """Background eval jobs would call Groq and write result files; never in unit tests."""
+    monkeypatch.setattr("app.main._run_eval_job", lambda *args, **kwargs: None)
 
 
 @pytest.fixture

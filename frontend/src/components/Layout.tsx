@@ -1,13 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   Activity,
+  KeyRound,
   BarChart3,
   History,
   PlayCircle,
   ShieldCheck,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { getHealth, listRuns } from '../api/client'
+import { getHealth, getStoredApiKey, listRuns, setStoredApiKey } from '../api/client'
 import BrandLogo from './BrandLogo'
 
 const NAV_ITEMS = [
@@ -35,6 +37,18 @@ export default function Layout() {
   })
 
   const activeRun = runs.find((r) => r.final_status === 'running')
+
+  const queryClient = useQueryClient()
+  const [hasKey, setHasKey] = useState(() => Boolean(getStoredApiKey()))
+  const needsKey = health?.auth === 'key' && !hasKey
+
+  const promptForKey = () => {
+    const entered = window.prompt('API key for this server (kept for this browser tab only):', '')
+    if (entered === null) return
+    setStoredApiKey(entered.trim() || null)
+    setHasKey(Boolean(entered.trim()))
+    queryClient.invalidateQueries()
+  }
 
   return (
     <div className="flex h-screen bg-canvas text-ink overflow-hidden font-sans">
@@ -92,6 +106,22 @@ export default function Layout() {
             </div>
           </div>
 
+          <button
+            type="button"
+            onClick={promptForKey}
+            className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 border text-[11px] transition-colors cursor-pointer ${
+              needsKey
+                ? 'border-accent text-accent bg-accent-subtle'
+                : 'border-border text-ink-secondary hover:text-ink hover:bg-surface-sunken'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <KeyRound className="h-3 w-3" />
+              <span>api key</span>
+            </span>
+            <span className="font-semibold">{hasKey ? 'set' : needsKey ? 'required' : 'not set'}</span>
+          </button>
+
           {/* System Telemetry */}
           <div className="space-y-1.5 text-[11px] text-ink-secondary">
             <div className="flex items-center justify-between">
@@ -111,7 +141,7 @@ export default function Layout() {
                   health?.docker_available ? 'text-status-success font-semibold' : 'text-status-warning font-semibold'
                 }
               >
-                {health?.docker_available ? 'docker cgroup' : 'host fallback'}
+                {health?.docker_available ? 'docker isolated' : 'unavailable'}
               </span>
             </div>
 
