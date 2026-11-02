@@ -27,6 +27,15 @@ from app.db import init_db  # noqa: E402
 from app.main import app  # noqa: E402
 
 
+def pytest_sessionstart(session):
+    """In CI the sandbox tests must run. Fail loudly instead of quietly skipping them."""
+    if os.getenv("CI"):
+        from app.sandbox import _is_docker_available
+
+        if not _is_docker_available():
+            raise pytest.UsageError("CI requires a reachable Docker daemon for the sandbox tests.")
+
+
 @pytest.fixture(autouse=True)
 def _no_real_eval_jobs(monkeypatch):
     """Background eval jobs would call Groq and write result files; never in unit tests."""
