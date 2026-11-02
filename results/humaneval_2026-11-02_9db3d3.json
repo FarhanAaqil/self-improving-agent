@@ -1,0 +1,482 @@
+{
+  "eval_id": "humaneval_2026-11-02_9db3d3",
+  "benchmark": "humaneval",
+  "suite": "official",
+  "model": "qwen/qwen3.8-27b",
+  "date": "2026-11-02",
+  "run_at": "2026-11-02T07:42:31.372206",
+  "duration_s": 598.6,
+  "total_problems": 40,
+  "max_attempts": 3,
+  "sandboxed": true,
+  "baseline": {
+    "pass_at_1": 100.0,
+    "passed": 40,
+    "ci95": [
+      91.2,
+      100.0
+    ]
+  },
+  "agent": {
+    "pass_at_1": 97.5,
+    "solve_at_k": 100.0,
+    "k": 3,
+    "passed": 40,
+    "ci95": [
+      91.2,
+      100.0
+    ],
+    "avg_attempts": 1.02
+  },
+  "repair_gain_pct": 0.0,
+  "pass_at_1": 97.5,
+  "pass_at_5": 100.0,
+  "avg_attempts": 1.02,
+  "avg_latency_ms": 363.5,
+  "tokens": {
+    "prompt": 13278,
+    "completion": 11017
+  },
+  "results": [
+    {
+      "problem_id": "HumanEval/0",
+      "entry_point": "has_close_elements",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 311,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/1",
+      "entry_point": "separate_paren_groups",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 358,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/2",
+      "entry_point": "truncate_number",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 391,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/3",
+      "entry_point": "below_zero",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 390,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/4",
+      "entry_point": "mean_absolute_deviation",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 500,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/5",
+      "entry_point": "intersperse",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/6",
+      "entry_point": "parse_nested_parens",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 452,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/7",
+      "entry_point": "filter_by_substring",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 405,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/8",
+      "entry_point": "sum_product",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 405,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/9",
+      "entry_point": "rolling_max",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 438,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/10",
+      "entry_point": "make_palindrome",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/11",
+      "entry_point": "string_xor",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 514,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/12",
+      "entry_point": "longest",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 531,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/13",
+      "entry_point": "greatest_common_divisor",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 296,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/14",
+      "entry_point": "all_prefixes",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 405,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/15",
+      "entry_point": "string_sequence",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 265,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/16",
+      "entry_point": "count_distinct_characters",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 281,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/17",
+      "entry_point": "parse_music",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/18",
+      "entry_point": "how_many_times",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 405,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/19",
+      "entry_point": "sort_numbers",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 452,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/20",
+      "entry_point": "find_closest_elements",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 328,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/21",
+      "entry_point": "rescale_to_unit",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/22",
+      "entry_point": "filter_integers",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 422,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/23",
+      "entry_point": "strlen",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 264,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/24",
+      "entry_point": "largest_divisor",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 265,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/25",
+      "entry_point": "factorize",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/26",
+      "entry_point": "remove_duplicates",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 359,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/27",
+      "entry_point": "flip_case",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 297,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/28",
+      "entry_point": "concatenate",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 421,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/29",
+      "entry_point": "filter_by_prefix",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 327,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/30",
+      "entry_point": "get_positive",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 281,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/31",
+      "entry_point": "is_prime",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 281,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/32",
+      "entry_point": "find_zero",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 2,
+      "attempts_used": 2,
+      "latency_ms": 313,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/33",
+      "entry_point": "sort_third",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 265,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/34",
+      "entry_point": "unique",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 358,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/35",
+      "entry_point": "max_element",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 297,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/36",
+      "entry_point": "fizz_buzz",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 358,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/37",
+      "entry_point": "sort_even",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/38",
+      "entry_point": "decode_cyclic",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 375,
+      "sandboxed": true,
+      "last_feedback": null
+    },
+    {
+      "problem_id": "HumanEval/39",
+      "entry_point": "prime_fib",
+      "baseline_passed": true,
+      "passed": true,
+      "passed_at_attempt": 1,
+      "attempts_used": 1,
+      "latency_ms": 281,
+      "sandboxed": true,
+      "last_feedback": null
+    }
+  ]
+}

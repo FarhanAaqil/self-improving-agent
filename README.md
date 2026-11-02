@@ -153,8 +153,18 @@ graph TD
 - **Honest error bars:** 95% Wilson confidence intervals. Results that did not run in the sandbox are refused.
 
 <!-- BENCHMARK_TABLE_START -->
-_No official result committed yet. Run `python -m eval.benchmark --problems 40` and then `python scripts/generate_readme_table.py`._
+Official HumanEval, 40 problems, `qwen/qwen3.8-27b`, run 2026-11-02 in the Docker sandbox. Brackets show the 95% confidence interval.
+
+| Metric | Result |
+|---|---|
+| Baseline pass@1 (single shot, no feedback) | 100.0% [91.2–100.0] |
+| Agent pass@1 (first attempt) | 97.5% |
+| Agent solve@3 (with repair) | 100.0% [91.2–100.0] |
+| Gain from repair | +0.0 pts |
+| Average attempts | 1.02 |
 <!-- BENCHMARK_TABLE_END -->
+
+> **Reading this honestly:** modern models have largely saturated HumanEval, so the baseline sits at the ceiling and repair has nothing left to add here. The repair loop is aimed at harder, under-specified tasks, and a tougher suite such as HumanEval+ or MBPP+ is the next benchmark to add.
 
 *The table is generated from committed JSON in `results/` by `scripts/generate_readme_table.py`; it is never hand-typed. Older numbers from the simplified 50-problem set are archived in `results/legacy/` with an explanation of why they are not comparable.*
 
