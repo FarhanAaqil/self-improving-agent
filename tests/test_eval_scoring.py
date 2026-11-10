@@ -90,3 +90,69 @@ def test_summary_separates_baseline_first_try_and_repair():
     assert s["sandboxed"] is True
     assert s["suite"] == "official"
     assert s["avg_attempts"] == 1.75
+
+
+def test_agent_benchmark_summary_separates_real_correctness_from_self_verification():
+    import os
+
+    os.environ.setdefault("AGENTBENCH_WORKDIR", os.path.join(os.environ["RESULTS_DIR"], "..", "agentbench"))
+    from eval.agent_benchmark import summarize_condition
+
+    def record(pid, verified, correct, first_try=True, attempts=1, score=0.9, memories=0):
+        return {
+            "problem_id": pid, "self_verified": verified, "attempts": attempts, "first_try": first_try,
+            "hidden_pass": correct, "hidden_kind": None if correct else "wrong_value", "sandboxed": True,
+            "tokens": 1000, "mutation_score": score, "strengthened": "kept" if correct else None, "memories": memories,
+        }
+
+    records = [
+        record("a", True, True),
+        record("b", True, False),            # stamped verified, actually wrong
+        record("c", False, False, first_try=False, attempts=3),
+        record("d", True, True, first_try=False, attempts=2, memories=1),
+    ]
+    s = summarize_condition("cold", records)
+    assert s["hidden_pass_rate"] == 50.0
+    assert s["self_verified"] == 3 and s["false_verified"] == 1
+    assert s["false_verified_rate"] == 33.3 and s["false_verified_ids"] == ["b"]
+    assert s["first_try_rate"] == 50.0 and s["avg_attempts"] == 1.75
+    assert s["strengthening"]["kept"] == 2 and s["runs_that_recalled_memory"] == 1
+    assert s["errors"] == 0
+
+    baseline = summarize_condition("baseline", [{**record("a", None, True), "mutation_score": None}])
+    assert "false_verified" not in baseline and baseline["hidden_pass_rate"] == 100.0
+
+
+def test_agent_benchmark_endpoint_lists_results_without_raw_records():
+    import json
+    import os
+
+    from fastapi.testclient import TestClient
+
+    from app.config import RESULTS_DIR
+    from app.main import app
+
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    payload = {
+        "eval_id": "agentbench_test", "kind": "agent_benchmark", "model": "m", "run_at": "2026-01-01T00:00:00",
+        "conditions": [{"condition": "agent", "hidden_pass_rate": 50.0}],
+        "records": {"agent": [{"problem_id": "HumanEval/1", "hidden_pass": True, "self_verified": True, "tokens": 9}]},
+    }
+    with open(os.path.join(RESULTS_DIR, "agentbench_test.json"), "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+
+    items = TestClient(app).get("/eval/agent").json()["items"]
+    item = next(i for i in items if i["eval_id"] == "agentbench_test")
+    assert "records" not in item
+    assert item["grid"]["agent"] == [{"id": "HumanEval/1", "correct": True, "verified": True}]
+
+
+def test_hidden_test_feedback_from_the_plus_judge_never_reveals_inputs():
+    from eval.plus import candidate_program, load_problems, safe_feedback
+
+    assert "input" in safe_feedback({"kind": "wrong_value"}) and "[" not in safe_feedback({"kind": "wrong_value"})
+    assert "TypeError" in safe_feedback({"kind": "exception", "detail": "TypeError"})
+    problems = load_problems()
+    assert len(problems) == 164 and all(len(p["inputs"]) > 0 for p in problems)
+    program = candidate_program(problems[0], "def has_close_elements(numbers, threshold):\n    return False")
+    compile(program, "<candidate>", "exec")
