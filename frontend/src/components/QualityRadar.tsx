@@ -3,6 +3,7 @@ import type { QualityReport } from '../api/types'
 
 const LABELS: Record<string, string> = {
   tests: 'tests',
+  mutation: 'test strength',
   coverage: 'coverage',
   security: 'security',
   complexity: 'simplicity',

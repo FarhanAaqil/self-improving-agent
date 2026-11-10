@@ -73,6 +73,16 @@ describe('narration', () => {
     assert.equal(narrate(ev(3, 'unknown_event')), null)
   })
 
+  test('explains mutation testing and what the stricter tests found', () => {
+    const gap = narrate(ev(1, 'mutation_tested', { available: true, stage: 'initial', total: 10, killed: 7, survivors: [{ line: 4, change: '`<` became `<=`' }] }))!
+    assert.match(gap.text, /missed 3/)
+    assert.match(gap.detail ?? '', /line 4/)
+    assert.match(narrate(ev(2, 'mutation_tested', { available: true, stage: 'initial', total: 5, killed: 5 }))!.text, /caught every one/)
+    assert.equal(narrate(ev(3, 'mutation_tested', { available: false, total: 0 })), null)
+    assert.equal(narrate(ev(4, 'tests_strengthened', { outcome: 'found_bug', added: 2 }))!.mood, 'failure')
+    assert.match(narrate(ev(5, 'tests_strengthened', { outcome: 'kept', added: 1 }))!.text, /1 stricter test\./)
+  })
+
   test('stepper reflects a repaired, verified run', () => {
     const events = [
       ev(1, 'run_started'), ev(2, 'memory_recalled', { memories: [] }), ev(3, 'tests_writing'),

@@ -51,6 +51,9 @@ export default function Shared() {
                   <div><dt className="text-ink-muted">coverage</dt><dd className="text-ink">{pct(run.certificate.coverage)}</dd></div>
                   <div><dt className="text-ink-muted">quality</dt><dd className="text-ink">{score10(run.certificate.quality_score)} / 10</dd></div>
                   <div><dt className="text-ink-muted">attempts</dt><dd className="text-ink">{run.certificate.attempts}</dd></div>
+                  {run.certificate.mutation?.total ? (
+                    <div><dt className="text-ink-muted">test strength</dt><dd className="text-ink">{run.certificate.mutation.killed}/{run.certificate.mutation.total} breaks caught</dd></div>
+                  ) : null}
                 </dl>
                 <p className="mt-4 flex items-start gap-2 break-all font-mono text-[11px] text-ink-muted">
                   <Fingerprint className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
