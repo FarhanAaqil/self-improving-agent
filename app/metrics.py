@@ -10,10 +10,11 @@ import re
 from typing import Any
 
 WEIGHTS = {
-    "tests": 0.30,
-    "coverage": 0.15,
+    "tests": 0.25,
+    "mutation": 0.15,
+    "coverage": 0.10,
     "security": 0.25,
-    "complexity": 0.15,
+    "complexity": 0.10,
     "performance": 0.15,
 }
 
@@ -99,6 +100,7 @@ def calculate_quality_metrics(
     bandit: dict | None = None,
     radon: dict | None = None,
     generated_tests: str | None = None,
+    mutation: dict | None = None,
 ) -> dict[str, Any]:
     """Combine measured and reviewed signals into a 0-1 overall score with a breakdown."""
     total = (test_report or {}).get("total") or 0
@@ -114,8 +116,11 @@ def calculate_quality_metrics(
     security_score = _min_known(compute_bandit_score(bandit), compute_llm_security_score(security_audit))
     perf_score = compute_performance_score(performance_notes)
 
+    mutation_score = mutation.get("score") if mutation and mutation.get("available") else None
+
     components = {
         "tests": tests_score,
+        "mutation": mutation_score,
         "coverage": coverage_score,
         "security": security_score,
         "complexity": complexity_score,
@@ -129,6 +134,7 @@ def calculate_quality_metrics(
     return {
         "overall_score": overall,
         "components": components,
+        "mutation": mutation,
         "weights": WEIGHTS,
         "cyclomatic_complexity": complexity,
         "complexity_score": complexity_score,

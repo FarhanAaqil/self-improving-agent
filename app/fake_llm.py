@@ -43,6 +43,8 @@ def respond(messages: list[dict]) -> str:
 
     if "spec for code that does not exist yet" in system:
         return rename(_TESTS)
+    if "hardening a test suite" in system:
+        return "NONE"
     if "debugging a failed attempt" in system:
         return json.dumps({
             "summary": "I subtracted where the task asks for a sum.",

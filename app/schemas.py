@@ -11,7 +11,7 @@ MAX_TASK_CHARS = 4000
 MAX_CODE_CHARS = 50_000
 
 ReviewAgent = Literal[
-    "critique", "test", "tests", "performance", "security_audit", "security", "docs", "documentation"
+    "critique", "test", "tests", "mutation", "performance", "security_audit", "security", "docs", "documentation"
 ]
 
 

@@ -126,3 +126,47 @@ def test_unopenable_memory_store_degrades_to_503_not_500():
         assert "could not be opened" in resp.json()["detail"]
         assert "ValueError" in resp.json()["detail"]
     memory._client = memory._collection = None
+
+
+@needs_docker
+@pytest.mark.sandbox
+def test_mutation_testing_tells_weak_tests_from_strong_ones():
+    from app.harness import mutation_test
+
+    solution = "def is_adult(age):\n    return age >= 18\n"
+    weak = mutation_test(solution, "def test_grown():\n    assert is_adult(40)\n")
+    strong = mutation_test(
+        solution,
+        "def test_grown():\n    assert is_adult(40)\n"
+        "def test_boundary():\n    assert is_adult(18) and not is_adult(17)\n",
+    )
+    assert weak["available"] and weak["survivors"], weak
+    assert strong["score"] == 1.0 and not strong["survivors"]
+    assert weak["score"] < strong["score"]
+    assert "18" in weak["survivors"][0]["source"]
+
+
+@needs_docker
+@pytest.mark.sandbox
+def test_mutation_testing_refuses_a_failing_baseline_and_survives_infinite_loops():
+    from app.harness import mutation_test
+
+    broken = mutation_test("def f():\n    return 1\n", "def test_f():\n    assert f() == 2\n")
+    assert broken["available"] is False and "does not pass" in broken["error"]
+    # Negating the loop condition would spin forever; the per-mutant timer counts it as killed
+    loop = mutation_test(
+        "def count(n):\n    i = 0\n    while i < n:\n        i += 1\n    return i\n",
+        "def test_count():\n    assert count(3) == 3\n",
+    )
+    assert loop["available"] and loop["killed"] >= 1
+
+
+def test_merge_tests_never_shadows_an_existing_test():
+    from app.test_agent import merge_tests
+
+    merged = merge_tests(
+        "def test_a():\n    assert 1\n",
+        "def test_a():\n    assert 2\n\ndef test_b():\n    assert 3\n",
+    )
+    assert merged.count("def test_a(") == 1 and "def test_a_strict(" in merged and "def test_b(" in merged
+    compile(merged, "<tests>", "exec")
