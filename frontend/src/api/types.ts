@@ -350,7 +350,7 @@ export interface AgentBenchCondition {
   hidden_pass: number
   hidden_pass_rate: number
   hidden_pass_ci95: [number, number]
-  avg_tokens: number
+  avg_tokens: number | null
   errors?: number
   self_verified?: number
   self_verified_rate?: number

@@ -23,6 +23,7 @@ import os
 import random
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -121,9 +122,40 @@ def run_agent(problem: dict, model: str, condition: str, attempts: int) -> dict:
     }
 
 
+class Checkpoint:
+    """Finished records, appended as they complete, so a long run survives a restart.
+
+    Free-tier rate limits make a full experiment take hours. Resuming with the same
+    AGENTBENCH_WORKDIR picks up where it stopped; crashed records are never saved, so
+    they are retried.
+    """
+
+    def __init__(self, path: str, signature: dict):
+        self.path = path
+        self.signature = signature
+        self._lock = threading.Lock()
+        self.done: dict[tuple[str, str], dict] = {}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    row = json.loads(line)
+                    if row.get("signature") == signature:
+                        self.done[(row["condition"], row["record"]["problem_id"])] = row["record"]
+
+    def get(self, condition: str, problem_id: str) -> dict | None:
+        return self.done.get((condition, problem_id))
+
+    def save(self, condition: str, record: dict) -> None:
+        with self._lock:
+            self.done[(condition, record["problem_id"])] = record
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"signature": self.signature, "condition": condition, "record": record}) + "\n")
+
+
 def summarize_condition(name: str, records: list[dict]) -> dict:
     n = len(records)
     correct = sum(r["hidden_pass"] for r in records)
+    known_tokens = [r["tokens"] for r in records if r.get("tokens")]
     summary = {
         "condition": name,
         "description": CONDITIONS[name][0],
@@ -131,7 +163,7 @@ def summarize_condition(name: str, records: list[dict]) -> dict:
         "hidden_pass": correct,
         "hidden_pass_rate": pct(correct, n),
         "hidden_pass_ci95": wilson_interval(correct, n),
-        "avg_tokens": round(sum(r["tokens"] for r in records) / n) if n else 0,
+        "avg_tokens": round(sum(known_tokens) / len(known_tokens)) if known_tokens else None,
         "sandboxed": all(r["sandboxed"] for r in records),
         # Runs that crashed (for example an exhausted rate limit) count as failures; this says how many
         "errors": sum(1 for r in records if str(r.get("hidden_kind") or "").startswith("error:")),
@@ -181,11 +213,19 @@ def run_experiment(
     problems = pick_problems(count, seed)
     started = time.monotonic()
     summaries, details = [], {}
+    checkpoint = Checkpoint(
+        os.path.join(_WORKDIR, "records.jsonl"),
+        {"model": model, "attempts": attempts, "seed": seed, "count": count},
+    )
 
     for name in conditions:
         def one(problem, name=name):
+            saved = checkpoint.get(name, problem["id"])
+            if saved is not None:
+                return saved
             try:
                 record = run_baseline(problem, model) if name == "baseline" else run_agent(problem, model, name, attempts)
+                checkpoint.save(name, record)
             except Exception as e:  # a crashed run is a failed run, not a crashed benchmark
                 record = {
                     "problem_id": problem["id"], "self_verified": False, "status": "error", "attempts": 0,

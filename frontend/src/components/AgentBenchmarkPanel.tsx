@@ -133,7 +133,7 @@ export default function AgentBenchmarkPanel() {
                 </td>
                 <td className="py-2 pr-3"><Rate value={c.first_try_rate} /></td>
                 <td className="py-2 pr-3 text-ink">{c.avg_attempts ?? '—'}</td>
-                <td className="py-2 text-ink-secondary">{c.avg_tokens}</td>
+                <td className="py-2 text-ink-secondary">{c.avg_tokens ?? '—'}</td>
               </tr>
             ))}
           </tbody>

@@ -73,12 +73,13 @@ export function narrate(event: RunEvent): StoryLine | null {
       if (p.stage === 'final') {
         return { ...base, mood: killed === total ? 'success' : 'neutral', text: `With the stricter tests, ${killed} of ${total} deliberate breaks get caught.` }
       }
+      const ways = `${total} different way${total === 1 ? '' : 's'}`
       return killed === total
-        ? { ...base, mood: 'success', text: `I broke my own code ${total} different ways and the tests caught every one.` }
+        ? { ...base, mood: 'success', text: `I broke my own code ${ways} and the tests caught ${total === 1 ? 'it' : 'every one'}.` }
         : {
             ...base,
             mood: 'thinking',
-            text: `I broke my own code ${total} different ways; the tests missed ${total - killed}. Writing stricter tests…`,
+            text: `I broke my own code ${ways}; the tests missed ${total - killed}. Writing stricter tests…`,
             detail: survivors[0] ? `e.g. line ${survivors[0].line}: ${survivors[0].change} went unnoticed` : undefined,
           }
     }

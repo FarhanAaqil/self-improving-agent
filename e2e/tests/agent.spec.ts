@@ -11,6 +11,8 @@ test('a task fails, gets diagnosed, is repaired and verified, live @mobile', asy
   // The story streams in over SSE: tests first, a failure, a diagnosis, then the fix
   await expect(page.getByText('Wrote 3 spec tests.')).toBeVisible()
   await expect(page.getByText('I subtracted where the task asks for a sum.')).toBeVisible()
+  // Once it passes, the agent breaks its own code on purpose to check the tests notice
+  await expect(page.getByText(/I broke my own code .* and the tests caught/)).toBeVisible()
   await expect(page.getByText('Verified on attempt 2.')).toBeVisible()
   await expect(page.getByRole('img', { name: /Verified on attempt 2/ })).toBeVisible()
   await expect(page.getByText('Passed 3/3 spec tests on attempt 2')).toBeVisible()
