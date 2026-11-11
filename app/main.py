@@ -1,5 +1,6 @@
 import asyncio
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -119,6 +121,40 @@ def _wants_app_shell(request: Request) -> bool:
     )
 
 
+# Public, rarely-changing GET endpoints answer conditional requests with 304 Not Modified
+_REVALIDATE_PATHS = ("/eval/latest", "/eval/history", "/eval/agent", "/models", "/sandbox/config", "/sandbox/attacks")
+
+
+async def _with_etag(request: Request, response: Response) -> Response:
+    if request.method != "GET" or response.status_code != 200 or not request.url.path.startswith(_REVALIDATE_PATHS):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    etag = '"' + hashlib.sha1(body).hexdigest()[:20] + '"'
+    headers = {k: v for k, v in response.headers.items() if k.lower() not in ("content-length", "etag")}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={**headers, "ETag": etag})
+    return Response(content=body, status_code=200, headers={**headers, "ETag": etag}, media_type=response.media_type)
+
+
+def _cache_policy(request: Request) -> str | None:
+    path = request.url.path
+    if path.startswith(("/assets/", "/fonts/")) or path in ("/logo-v1.webp", "/logo-v1.jpg"):
+        return "public, max-age=31536000, immutable"  # names carry a hash or a version
+    if path in ("/favicon.svg", "/brand-banner.jpg"):
+        return "public, max-age=86400"
+    if _wants_app_shell(request):
+        # Stored but always revalidated: lets the browser's back/forward cache keep the page,
+        # while Vary: Accept keeps the HTML from ever answering a JSON fetch
+        return "no-cache"
+    if path.startswith(_REVALIDATE_PATHS):
+        return "no-cache"  # may be stored, but must be revalidated (cheap thanks to the ETag)
+    if path.startswith(
+        ("/generate", "/execute", "/runs", "/eval", "/memory", "/compare", "/shared", "/usage", "/stats", "/metrics")
+    ):
+        return "no-store, max-age=0"  # private run data is never written to disk caches
+    return None
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     rid = new_request_id(request.headers.get("x-request-id"))
@@ -128,7 +164,7 @@ async def add_security_headers(request: Request, call_next):
         if _wants_app_shell(request):
             response = FileResponse(str(_FRONTEND_DIST / "index.html"))
         else:
-            response = await call_next(request)
+            response = await _with_etag(request, await call_next(request))
     finally:
         request_id.reset(token)
     route = request.scope.get("route")
@@ -142,8 +178,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; "
         "img-src 'self' data: https:; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "
@@ -154,12 +190,28 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # The same URL can be a page (Accept: text/html) or JSON, so caches must key on Accept,
     # and the app shell itself must never be reused as an API response.
-    response.headers["Vary"] = "Accept"
-    if request.url.path.startswith(
-        ("/generate", "/execute", "/runs", "/eval", "/memory", "/compare", "/shared", "/usage", "/stats", "/metrics")
-    ) or _wants_app_shell(request):
-        response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Vary"] = "Accept"  # the gzip layer appends Accept-Encoding itself
+    policy = _cache_policy(request)
+    if policy:
+        response.headers["Cache-Control"] = policy
     return response
+
+
+class _CompressExceptStreams:
+    """gzip every response except server-sent events, which must flush event by event."""
+
+    def __init__(self, app):
+        self.plain = app
+        self.gzip = GZipMiddleware(app, minimum_size=800, compresslevel=6)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path", "").endswith("/events"):
+            await self.plain(scope, receive, send)
+        else:
+            await self.gzip(scope, receive, send)
+
+
+app.add_middleware(_CompressExceptStreams)
 
 
 @app.exception_handler(MemoryUnavailable)
@@ -661,16 +713,33 @@ _eval_progress: dict[str, dict] = {}
 _eval_lock = threading.Lock()
 
 
+_json_cache: dict[str, tuple[float, int, dict]] = {}
+
+
+def _load_json(path: str) -> dict | None:
+    """Parse a results file once; re-read only when its size or modification time changes."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    cached = _json_cache.get(path)
+    if cached and cached[0] == stat.st_mtime and cached[1] == stat.st_size:
+        return cached[2]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    _json_cache[path] = (stat.st_mtime, stat.st_size, data)
+    return data
+
+
 def _result_files() -> list[dict]:
     """Committed result JSONs (top level only; results/legacy is ignored)."""
     out = []
     for path in glob.glob(os.path.join(RESULTS_DIR, "*.json")):
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            continue
-        if "agent" in data and "baseline" in data:
+        data = _load_json(path)
+        if data and "agent" in data and "baseline" in data:
             out.append(data)
     return out
 
@@ -736,12 +805,8 @@ def agent_benchmarks():
     """
     found = []
     for path in glob.glob(os.path.join(RESULTS_DIR, "agentbench_*.json")):
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            continue
-        if data.get("kind") != "agent_benchmark":
+        data = _load_json(path)
+        if not data or data.get("kind") != "agent_benchmark":
             continue
         grid = {
             name: [
