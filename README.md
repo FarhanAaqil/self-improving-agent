@@ -119,7 +119,9 @@ graph TD
     G -->|confidence < 0.3| H[Early stop + remember failure]
     G -->|tests at fault, once| D
     G -->|repair| E
-    F -->|all tests pass| I[Review: performance, LLM security audit,<br/>bandit, radon, critique]
+    F -->|all tests pass| T[Mutation testing: break the code on purpose,<br/>write stricter tests for what slips through]
+    T -->|stricter tests expose a bug| G
+    T -->|tests hold| I[Review: performance, LLM security audit,<br/>bandit, radon, critique]
     I --> J[Documentation agent<br/>kept only if it still passes]
     J --> K[Quality score from measured data]
     K --> L[Remember the lesson that fixed it]
@@ -128,11 +130,18 @@ graph TD
 
 **What counts as success:** every spec test passes inside the sandbox. A clean exit code is not enough. The repair prompt contains the previous code, the failing tests and the diagnosis, so the model fixes what it can actually see.
 
+**Who tests the tests?** The spec tests are written by a model too, so passing them only means something if they are strict. Once the code passes, the sandbox breaks it on purpose in up to 30 small ways (flipped comparisons, swapped operators, off-by-one constants, negated conditions) and counts how many breaks the tests notice. For anything that slips through, the test agent writes stricter tests from the task statement. If the code still passes, they are kept; if they fail, a diagnosis decides whether they exposed a real bug (the code goes back for repair) or were simply wrong (they are dropped). The resulting test-strength score is part of the quality report and the certificate.
+
 ---
 
 ## 4. Evaluation & Benchmark Results
 
 `python -m eval.benchmark` runs the **official HumanEval** problems (all 164 are vendored in `eval/data/`, MIT licensed) with their original `check()` tests, inside the Docker sandbox.
+
+There are two benchmarks:
+
+1. **`python -m eval.agent_benchmark`** runs the *real pipeline* (spec tests, repair, stricter tests, memory) and judges its final code with **HumanEval+**: about 750 hidden inputs per problem, with expected values computed by running the reference solution beside the candidate in the sandbox. It answers the questions that matter: how often is the code actually correct, how often is a run stamped "verified" in fact wrong, and does meeting the same tasks again with memory help? Long runs checkpoint and resume, because free-tier rate limits make them take hours.
+2. **`python -m eval.benchmark`** is the simpler complete-and-retry loop on plain HumanEval, kept as a sanity baseline:
 
 - **Baseline:** one single-shot completion per problem, no feedback.
 - **Agent pass@1:** the agent's first attempt (an independent sample).
@@ -221,6 +230,8 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 | `RATE_LIMIT_PER_MINUTE` | `20` | Per-client limit on endpoints that spend tokens or sandbox time |
 | `CERT_SIGNING_KEY` | — | HMAC-signs exported verification certificates |
 | `MEMORY_ENABLED` | `true` | Vector memory of failures and lessons |
+| `MUTATION_ENABLED` | `true` | Mutation-test passing code and write stricter tests for the gaps |
+| `LLM_MAX_RETRIES`, `LLM_MAX_WAIT_SECONDS` | `6`, `60` | Rate limits and blips are waited out (honoring `retry-after`) instead of failing the run |
 | `FAKE_LLM` | `false` | Offline demo / end-to-end test mode |
 | `LOG_FORMAT` | `text` | `json` for structured logs with request ids |
 | `SANDBOX_TIMEOUT`, `SANDBOX_MEMORY`, `SANDBOX_PIDS` | `10`, `256m`, `64` | Sandbox limits |
@@ -231,7 +242,7 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 
 ## 7. API Reference
 
-Interactive OpenAPI docs live at `http://localhost:8000/docs`. Every route except `/health`, `/models`, `/sandbox/*` (read) and `/shared/*` needs a key unless `APP_ENV=development`.
+Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside `APP_ENV=development`, everything that touches runs, memory, usage or spends tokens needs a key. Read-only status (`/health`, `/models`, `/sandbox/config`, the attack list), published benchmark results (`GET /eval/*`) and share links (`/shared/*`) are public.
 
 | Method | Route | Description |
 |---|---|---|
@@ -249,7 +260,8 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Every route excep
 | `GET` | `/stats/improvement`, `/usage` | Daily first-try/solve rates, memory effect, today's token use |
 | `GET`/`POST` | `/sandbox/attacks`, `/sandbox/attacks/{name}` | List and launch the curated attacks |
 | `POST` | `/runs/{id}/pr` | Open a GitHub PR for a verified run (allowlisted repos only) |
-| `GET`/`POST` | `/eval/latest`, `/eval/history`, `/eval/run`, `/eval/status/{id}` | Benchmarks |
+| `GET`/`POST` | `/eval/latest`, `/eval/history`, `/eval/run`, `/eval/status/{id}` | Simple benchmark |
+| `GET` | `/eval/agent` | Real-pipeline benchmark results (correct vs. stamped verified, per setup) |
 | `POST` | `/generate`, `/execute/{id}` | Generate only, or re-execute an attempt |
 | `GET` | `/metrics` | Prometheus counters (requests, runs, sandbox outcomes, tokens) |
 
@@ -259,7 +271,7 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Every route excep
 
 | Layer | What runs | Where |
 |---|---|---|
-| Backend | 91 pytest tests: pipeline, harness, metrics, memory, auth and workspaces, certificates, sharing, benchmark statistics | `pytest -m "not integration"` (coverage gate 75%, currently ~81%) |
+| Backend | 110+ pytest tests: pipeline, harness, mutation testing, metrics, memory, auth and workspaces, certificates, sharing, benchmark statistics, API/type drift | `pytest -m "not integration"` (coverage gate 75%) |
 | Sandbox | 8 real attacks against a live Docker daemon, plus the attack API | part of the backend suite |
 | Frontend | SSE parser, LCS diff, highlighter, narration and stepper | `npm --prefix frontend test` |
 | End-to-end | Playwright drives the real UI against the real sandbox in offline demo mode: a run fails, gets diagnosed, repaired and verified; share links; attacks; theme and command palette | `cd e2e && npx playwright test` |
@@ -276,7 +288,8 @@ CI runs lint, backend (with coverage gate), frontend, end-to-end and an informat
 - **Spec tests are written by a model.** Passing them means the code does what they check; read anything you ship.
 - **Memory is user-derived text.** It is fenced, size-capped and auditable, but a determined user can still write misleading tasks.
 - **HumanEval is saturated** for current models; the repair loop matters more on harder, under-specified tasks. HumanEval+ / MBPP+ are next.
-- **Python only**, single process (SQLite + in-process job pool). Postgres and a real queue are the path to horizontal scale.
+- **Python only, and one API process per data directory.** The job pool, rate limiter and vector store live in that process, so startup takes a lock and a second process on the same data refuses to start instead of corrupting it. To scale out, give each instance its own `DB_PATH` and `MEMORY_DIR`; a shared queue and Postgres would be the next step.
+- **Mutation testing has blind spots.** Some surviving mutants are equivalent (the change does not alter behaviour), so a score below 100% is a prompt to look, not proof of a gap.
 
 ---
 
