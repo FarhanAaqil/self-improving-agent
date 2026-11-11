@@ -9,6 +9,7 @@
 
 import os
 import re
+import threading
 import uuid
 from datetime import datetime
 from typing import Any
@@ -31,6 +32,7 @@ _FIELD_LIMITS = {"task": 400, "code": 1200, "error": 600, "lesson": 600}
 
 _client: Any = None
 _collection: Any = None
+_init_lock = threading.Lock()
 
 
 def _trim(text: str | None, limit: int) -> str:
@@ -55,11 +57,17 @@ def _get_collection(collection_override=None):
         return collection_override
 
     global _client, _collection
-    if _collection is None:
-        try:
-            import chromadb
-            from chromadb.utils import embedding_functions
+    if _collection is not None:
+        return _collection
+    # Chroma's local backend breaks if several threads open it at the same moment, and then
+    # keeps serving the broken client from its cache. Open it once, behind a lock.
+    with _init_lock:
+        if _collection is not None:
+            return _collection
+        import chromadb
+        from chromadb.utils import embedding_functions
 
+        try:
             if _client is None:
                 os.makedirs(MEMORY_DIR, exist_ok=True)
                 _client = chromadb.PersistentClient(path=MEMORY_DIR)
@@ -70,9 +78,13 @@ def _get_collection(collection_override=None):
             )
         except Exception as e:
             _client = None
+            try:  # drop the half-started client so the next attempt starts clean
+                chromadb.api.client.SharedSystemClient.clear_system_cache()
+            except Exception:
+                pass
             raise MemoryUnavailable(
                 f"The memory store at {MEMORY_DIR} could not be opened ({type(e).__name__}). "
-                "If it came from an older version, point MEMORY_DIR at a new folder."
+                "If it came from an older chromadb version, point MEMORY_DIR at a new folder."
             ) from e
     return _collection
 

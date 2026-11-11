@@ -214,6 +214,11 @@ def run_experiment(
     progress=None,
 ) -> dict:
     db.init_db()
+    if any(CONDITIONS[name][1].get("use_memory") for name in conditions):
+        # A memory experiment with a broken store would silently measure nothing
+        from app.memory import _get_collection
+
+        _get_collection()
     problems = pick_problems(count, seed)
     started = time.monotonic()
     summaries, details = [], {}
@@ -246,6 +251,9 @@ def run_experiment(
         summaries.append(summarize_condition(name, records))
         if not summaries[-1]["sandboxed"]:
             raise RuntimeError("Benchmark refused: something ran outside the Docker sandbox.")
+        if summaries[-1].get("errors"):
+            # Later conditions build on this one (warm reuses what cold learned), so they wait
+            break
 
     now = datetime.now()
     return {
@@ -274,6 +282,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--conditions", default=",".join(CONDITIONS))
     parser.add_argument("--no-save", action="store_true")
+    parser.add_argument(
+        "--until-complete", type=int, default=0, metavar="MINUTES",
+        help="Keep going until no run crashed: after a pass with crashes (e.g. a daily token cap), "
+             "sleep MINUTES and resume from the checkpoint. Results are saved only when complete.",
+    )
     args = parser.parse_args()
 
     names = [c.strip() for c in args.conditions.split(",") if c.strip()]
@@ -287,9 +300,18 @@ def main() -> None:
         why = "" if record["hidden_pass"] else f" ({record['hidden_kind']})"
         print(f"[{name:<9}] {record['problem_id']:<14} hidden:{mark} {verified:<10} attempts:{record['attempts']}{why}", flush=True)
 
-    result = run_experiment(names, args.problems, args.model, args.attempts, args.seed, args.workers, show)
+    while True:
+        result = run_experiment(names, args.problems, args.model, args.attempts, args.seed, args.workers, show)
+        crashed = sum(c.get("errors", 0) for c in result["conditions"])
+        if not crashed or not args.until_complete:
+            break
+        print(f"{crashed} run(s) crashed (likely a rate limit); resuming in {args.until_complete} min", flush=True)
+        time.sleep(args.until_complete * 60)
     print(json.dumps(result["conditions"], indent=2))
-    if not args.no_save:
+    complete = len(result["conditions"]) == len(names) and not any(c.get("errors") for c in result["conditions"])
+    if not complete:
+        print("Incomplete (some runs crashed); not saving. Rerun with the same AGENTBENCH_WORKDIR to resume.")
+    elif not args.no_save:
         os.makedirs(RESULTS_DIR, exist_ok=True)
         path = os.path.join(RESULTS_DIR, f"{result['eval_id']}.json")
         with open(path, "w", encoding="utf-8") as f:

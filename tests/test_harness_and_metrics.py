@@ -201,3 +201,35 @@ def test_the_same_failure_twice_updates_one_memory_instead_of_adding_another():
     coll.query.return_value = {"ids": [["mem-1"]], "distances": [[0.4]], "metadatas": [[existing]]}
     assert store_failure("other", "c", "KeyError: x", collection=coll) != "mem-1"
     coll.add.assert_called_once()
+
+
+def test_memory_store_is_opened_once_even_when_threads_race(monkeypatch):
+    """Chroma's local backend breaks when opened concurrently; initialisation must be serialised."""
+    import threading
+    import time
+
+    import chromadb
+
+    from app import memory
+
+    active, peak, created = [0], [0], []
+
+    class SlowClient:
+        def __init__(self, path):
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            time.sleep(0.05)
+            active[0] -= 1
+            created.append(path)
+
+        def get_or_create_collection(self, **kwargs):
+            return MagicMock()
+
+    monkeypatch.setattr(chromadb, "PersistentClient", SlowClient)
+    monkeypatch.setattr(memory, "_client", None)
+    monkeypatch.setattr(memory, "_collection", None)
+    barrier = threading.Barrier(6)
+    threads = [threading.Thread(target=lambda: (barrier.wait(), memory._get_collection())) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert peak[0] == 1 and len(created) == 1
