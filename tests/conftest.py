@@ -49,6 +49,9 @@ def temp_db_path() -> Generator[str, None, None]:
         path = f.name
     init_db(path)
     yield path
+    from app.db import close_pooled_connections
+
+    close_pooled_connections()
     if os.path.exists(path):
         try:
             os.remove(path)
