@@ -29,12 +29,19 @@ export default function BrandLogo({
       className={`relative shrink-0 ${box} bg-[#10241C] border border-[#FF5A1F]/60 flex items-center justify-center overflow-hidden shadow-xs group-hover:border-[#FF5A1F] transition-colors`}
     >
       {!imgFailed ? (
-        <img
-          src="/logo-square.jpg"
-          alt="CODE_AGENT logo"
-          className={`${img} object-cover`}
-          onError={() => setImgFailed(true)}
-        />
+        <picture>
+          {/* 128px is enough for the largest (64px) size on a 2x screen; WebP is ~2KB */}
+          <source srcSet="/logo-v1.webp" type="image/webp" />
+          <img
+            src="/logo-v1.jpg"
+            alt="CODE_AGENT logo"
+            width={128}
+            height={128}
+            decoding="async"
+            className={`${img} object-cover`}
+            onError={() => setImgFailed(true)}
+          />
+        </picture>
       ) : (
         /* Vector SVG fallback matching exact branding */
         <svg viewBox="0 0 32 32" className="h-4/5 w-4/5" fill="none">
@@ -61,12 +68,12 @@ export default function BrandLogo({
       <div className="flex flex-col">
         <div className={`font-mono font-bold ${text} text-ink tracking-tight group-hover:text-accent transition-colors flex items-center gap-1.5`}>
           <span>CODE_AGENT</span>
-          <span className="text-[10px] px-1 py-0.2 bg-accent/10 text-accent font-mono border border-accent/30 font-medium">
+          <span className="text-[10px] px-1 py-0.2 bg-accent/10 text-accent-ink font-mono border border-accent/30 font-medium">
             LEDGER
           </span>
         </div>
         {showSubtitle && (
-          <div className={`font-mono ${sub} text-ink-tertiary tracking-normal`}>
+          <div className={`font-mono ${sub} text-ink-muted tracking-normal`}>
             autonomous verification system
           </div>
         )}

@@ -33,7 +33,9 @@ export default function Ledger() {
     queryKey: ['runs', page, q, status],
     queryFn: () => listRuns({ page, pageSize, q, status }),
     placeholderData: keepPreviousData,
-    refetchInterval: 8000,
+    // Only poll quickly while a listed run can still change
+    refetchInterval: (q) =>
+      q.state.data?.items.some((r) => ['running', 'queued'].includes(r.final_status)) ? 5000 : 30000,
   })
 
   const counts = data?.status_counts ?? {}

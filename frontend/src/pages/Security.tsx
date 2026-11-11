@@ -56,6 +56,8 @@ export default function Security() {
         lede="Everything a model writes is treated as hostile. This page reads the sandbox settings straight from the server, and the attacks below run for real against it."
       />
 
+      {/* Warnings appear above the panels, so show nothing until both requests settle */}
+      {(config.isLoading || attacks.isLoading) ? <Skeleton className="h-[36rem]" /> : (<>
       {config.data && !config.data.docker_available && (
         <ErrorNote error={new Error('Docker is not available on this server, so code execution is refused entirely (there is no unsafe fallback).')} />
       )}
@@ -127,6 +129,8 @@ export default function Security() {
           {attack.isError && <div className="p-3"><ErrorNote error={attack.error} /></div>}
         </Panel>
       </div>
+
+      </>)}
 
       <Panel title="what this does not protect against">
         <ul className="list-disc space-y-2 pl-5 text-sm text-ink-secondary">

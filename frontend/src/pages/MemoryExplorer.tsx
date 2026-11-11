@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Brain, Pin, PinOff, Search, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { deleteMemory, getMemoryStats, listMemory, pinMemory, searchMemory } from '../api/client'
 import type { MemoryItem } from '../api/types'
-import ImprovementPanel from '../components/ImprovementPanel'
 import { Chip, EmptyState, ErrorNote, PageHeader, Skeleton, Stat } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
 import { relativeTime } from '../lib/format'
+
+// Charts load after the page paints, so the memories show up without waiting for them
+const ImprovementPanel = lazy(() => import('../components/ImprovementPanel'))
 
 const KINDS = [
   { id: 'all', label: 'everything' },
@@ -81,7 +83,9 @@ export default function MemoryExplorer() {
         lede="Failures I couldn't fix and lessons from ones I did. Before every run I recall the closest matches so I don't repeat myself. You can pin what matters and delete what doesn't."
       />
 
-      <ImprovementPanel />
+      <Suspense fallback={<Skeleton className="h-72" />}>
+        <ImprovementPanel />
+      </Suspense>
 
       {!health ? (
         <Skeleton className="h-40" />
@@ -107,7 +111,7 @@ export default function MemoryExplorer() {
                   aria-pressed={kind === k.id}
                   disabled={q.length >= 3}
                   onClick={() => setKind(k.id)}
-                  className={`chip px-2.5 py-1 disabled:opacity-50 ${kind === k.id ? 'border-cyan bg-cyan text-white' : 'border-border bg-surface text-ink-secondary'}`}
+                  className={`chip px-2.5 py-1 disabled:opacity-50 ${kind === k.id ? 'border-cyan bg-cyan text-ink-inverse' : 'border-border bg-surface text-ink-secondary'}`}
                 >
                   {k.label}
                 </button>
