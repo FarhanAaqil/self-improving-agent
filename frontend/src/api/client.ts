@@ -19,6 +19,7 @@ import type {
   RunOut,
   RunPage,
   SandboxConfig,
+  AgentBenchRun,
   BenchmarkResult,
   Certificate,
   Comparison,
@@ -196,6 +197,7 @@ export const pinMemory = (id: string, pinned: boolean) =>
 
 // ── Evaluation ──
 export const getLatestEval = () => request<EvalResultOut>('/eval/latest')
+export const getAgentBenchmarks = () => request<{ items: AgentBenchRun[] }>('/eval/agent')
 export const getEvalHistory = () => request<{ items: BenchmarkResult[] }>('/eval/history')
 export const getEvalStatus = (evalId: string) => request<EvalStatus>(`/eval/status/${encodeURIComponent(evalId)}`)
 export const triggerEval = (req: EvalRunRequest) => post<EvalRunOut>('/eval/run', req)

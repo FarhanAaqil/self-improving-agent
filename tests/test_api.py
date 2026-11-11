@@ -248,3 +248,34 @@ def test_app_shell_is_never_cached_in_place_of_json():
     assert page.headers["vary"] == "Accept"
     assert "no-store" in page.headers["cache-control"]
     assert "no-store" in client.get("/shared/some-token").headers["cache-control"]
+
+
+def test_frontend_types_only_use_fields_the_api_really_returns():
+    """Hand-written TypeScript interfaces drift silently; this fails when one names a field
+    the matching response model does not have."""
+    import re
+    from pathlib import Path
+
+    from app import schemas
+
+    source = (Path(__file__).resolve().parent.parent / "frontend" / "src" / "api" / "types.ts").read_text("utf-8")
+
+    def ts_fields(name: str) -> set[str]:
+        body = re.search(rf"export interface {name} (?:extends \w+ )?\{{(.*?)\n\}}", source, re.S).group(1)
+        return set(re.findall(r"^  (\w+)\??:", body, re.M))
+
+    pairs = {
+        "AttemptOut": schemas.AttemptOut,
+        "RunOut": schemas.RunOut,
+        "RunSummary": schemas.RunSummary,
+        "RunPage": schemas.RunPage,
+        "RunAccepted": schemas.RunAccepted,
+    }
+    for ts_name, model in pairs.items():
+        unknown = ts_fields(ts_name) - set(model.model_fields)
+        assert not unknown, f"{ts_name} in types.ts uses fields the API does not return: {sorted(unknown)}"
+
+    health = set(client.get("/health").json())
+    assert not (ts_fields("HealthResponse") - health), ts_fields("HealthResponse") - health
+    usage = set(client.get("/usage").json())
+    assert not (ts_fields("Usage") - usage)

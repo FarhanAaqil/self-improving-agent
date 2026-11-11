@@ -64,6 +64,9 @@ def build_certificate(run: dict) -> dict | None:
         "coverage": passing.get("coverage"),
         "quality_score": passing.get("quality_overall_score"),
         "bandit_issues": len(quality.get("bandit_issues", [])),
+        "mutation": {
+            k: (quality.get("mutation") or {}).get(k) for k in ("score", "killed", "total")
+        },
         "sandbox": {
             "sandboxed": bool(passing.get("sandboxed")),
             "image": SANDBOX_IMAGE,

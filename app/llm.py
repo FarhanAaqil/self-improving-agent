@@ -1,18 +1,24 @@
 """One place for every Groq call: client reuse, token accounting and output cleanup."""
 
 import contextvars
+import logging
+import random
 import re
 import threading
+import time
 from contextlib import contextmanager
 from typing import Any
 
 from groq import Groq
 
-from app.config import FAKE_LLM, GROQ_API_KEY, MODEL
+from app.config import FAKE_LLM, GROQ_API_KEY, LLM_MAX_RETRIES, LLM_MAX_WAIT_SECONDS, MODEL
+
+logger = logging.getLogger("self_improving_agent.llm")
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.S | re.I)
 
 _clients: dict[str, Groq] = {}
+_MAX_CLIENTS = 32
 _clients_lock = threading.Lock()
 
 # Per-run accumulators. Each pipeline run sets its own, so concurrent runs never mix counts.
@@ -25,6 +31,9 @@ def get_client(api_key: str | None = None) -> Groq:
     key = api_key or _request_key.get() or GROQ_API_KEY or ""
     with _clients_lock:
         if key not in _clients:
+            # Bring-your-own keys would otherwise pile up forever; keep the most recent few
+            while len(_clients) >= _MAX_CLIENTS:
+                _clients.pop(next(iter(_clients)))
             _clients[key] = Groq(api_key=key or None)
         return _clients[key]
 
@@ -70,6 +79,36 @@ def _record(response: Any) -> None:
     bucket["calls"] += 1
 
 
+_TRANSIENT = ("RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError")
+
+
+def _retry_after(exc: Exception) -> float | None:
+    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    try:
+        return float(headers.get("retry-after"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _create_with_retry(client: Any, **kwargs: Any) -> Any:
+    """
+    Rate limits and brief outages are normal on free tiers; a run should wait them out
+    rather than fail. Honors the server's retry-after, with capped exponential backoff.
+    """
+    delay = 2.0
+    for attempt in range(LLM_MAX_RETRIES + 1):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if type(exc).__name__ not in _TRANSIENT or attempt == LLM_MAX_RETRIES:
+                raise
+            wait = min(_retry_after(exc) or delay, LLM_MAX_WAIT_SECONDS)
+            logger.info("LLM call hit %s; retrying in %.0fs (%d/%d)",
+                        type(exc).__name__, wait, attempt + 1, LLM_MAX_RETRIES)
+            time.sleep(wait + random.uniform(0, 1))
+            delay = min(delay * 2, LLM_MAX_WAIT_SECONDS)
+
+
 def chat(
     messages: list[dict],
     model: str | None = None,
@@ -89,7 +128,8 @@ def chat(
             bucket["calls"] += 1
         return reply
 
-    response = (client or get_client()).chat.completions.create(
+    response = _create_with_retry(
+        client or get_client(),
         model=model or MODEL,
         messages=messages,
         temperature=temperature,

@@ -35,11 +35,18 @@ AVAILABLE_MODELS = _csv(
 if MODEL not in AVAILABLE_MODELS:
     AVAILABLE_MODELS.insert(0, MODEL)
 
+# Rate limits and blips are retried (honoring retry-after) instead of failing the run
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "6"))
+LLM_MAX_WAIT_SECONDS = float(os.getenv("LLM_MAX_WAIT_SECONDS", "60"))
+
 # ── Agent runtime behavior ──────────────────────────────────
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 MAX_CRITIQUE_ROUNDS = int(os.getenv("MAX_CRITIQUE_ROUNDS", "3"))
 CRITIQUE_CONFIDENCE_THRESHOLD = float(os.getenv("CRITIQUE_CONFIDENCE_THRESHOLD", "0.3"))
 SANDBOX_TIMEOUT = int(os.getenv("SANDBOX_TIMEOUT", "10"))
+# After the tests pass, break the code in small ways to see whether the tests notice,
+# and write stricter tests for whatever slips through.
+MUTATION_ENABLED = _flag("MUTATION_ENABLED", "true")
 
 # ── Storage & DB ────────────────────────────────────────────
 DB_PATH = os.getenv("DB_PATH", os.path.join(_ROOT, "agent.db"))

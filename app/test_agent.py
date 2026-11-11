@@ -45,6 +45,66 @@ def generate_spec_tests(
     return llm.clean_code(raw)
 
 
+STRENGTHEN_PROMPT = """You are a QA engineer hardening a test suite.
+You get a task, the tests written for it, the solution under test, and a list of small code
+changes ("mutants") that the current tests failed to notice.
+
+Write ADDITIONAL test functions that would fail for those changes.
+- Take every expected value from the TASK statement. Never trust the solution's current
+  behaviour as the source of truth; if the solution is wrong, your test should expose it.
+- If a listed change does not alter any behaviour the task defines, skip it.
+- Name tests `test_<behaviour>`, use bare `assert` statements with a short message.
+- Do not repeat existing tests. No imports of pytest, no runner, no implementation.
+Return ONLY the new test functions as Python code, or the single word NONE if nothing
+meaningful can be added."""
+
+
+def strengthen_tests(
+    task: str,
+    code: str,
+    tests: str,
+    survivors: list[dict],
+    client_override=None,
+    model_override: str | None = None,
+) -> str | None:
+    """Ask for extra spec tests covering behaviour the current tests leave unpinned."""
+    gaps = "\n".join(
+        f"- line {s.get('line')} (`{s.get('source', '')}`): {s.get('change')}" for s in survivors[:8]
+    )
+    user = (
+        f"Task:\n{task}\n\nCurrent tests:\n{tests}\n\nSolution under test:\n{code}\n\n"
+        f"Changes the tests did not notice:\n{gaps}"
+    )
+    raw = llm.chat(
+        [
+            {"role": "system", "content": STRENGTHEN_PROMPT},
+            {"role": "user", "content": user},
+        ],
+        model=model_override,
+        temperature=0.2,
+        max_tokens=1000,
+        client=client_override,
+    )
+    extra = llm.clean_code(raw)
+    return extra if "def test_" in extra else None
+
+
+def merge_tests(tests: str, extra: str) -> str:
+    """Append extra tests, renaming any whose name already exists so nothing is shadowed."""
+    import re
+
+    existing = set(re.findall(r"^def (test_\w+)\(", tests, re.M))
+
+    def rename(match: re.Match) -> str:
+        name = match.group(1)
+        while name in existing:
+            name += "_strict"
+        existing.add(name)
+        return f"def {name}("
+
+    return tests.rstrip() + "\n\n\n" + re.sub(r"^def (test_\w+)\(", rename, extra.strip(), flags=re.M) + "\n"
+
+
 def generate_unit_tests(
     task: str,
     code: str,

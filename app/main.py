@@ -3,6 +3,7 @@ import glob
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -58,6 +59,7 @@ from app.schemas import (
     RunPage,
 )
 from app.security import auth_mode, groq_key_of, rate_limited, verify_api_access, workspace_of
+from app.single_instance import InstanceLock
 
 logger = logging.getLogger("self_improving_agent")
 configure_logging()
@@ -71,11 +73,17 @@ db.init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db.init_db()
-    interrupted = recover_interrupted_runs()
-    if interrupted:
-        logger.warning("Marked %d interrupted run(s) as failed", interrupted)
-    yield
+    # Fails fast with a clear message if another process already owns this data directory
+    lock = InstanceLock()
+    lock.acquire()
+    try:
+        db.init_db()
+        interrupted = recover_interrupted_runs()
+        if interrupted:
+            logger.warning("Marked %d interrupted run(s) as failed", interrupted)
+        yield
+    finally:
+        lock.release()
 
 
 app = FastAPI(
@@ -95,17 +103,18 @@ app.add_middleware(
 
 
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-_API_DOC_PATHS = ("/docs", "/redoc", "/openapi.json", "/assets/")
+# Pages of the React app. Several share their path with an API route (/runs/{id}, /memory),
+# so the Accept header decides which one a request gets.
+_PAGE_ROUTE = re.compile(r"^/(|history|memory|eval|security|settings|(runs|compare|shared)/[\w-]+)/?$")
 
 
 def _wants_app_shell(request: Request) -> bool:
-    """A browser navigation (Accept: text/html) gets the React app, even on paths like
-    /runs/{id} or /memory that are also API routes. fetch() calls never send text/html."""
+    """A browser navigation (Accept: text/html) to a page route gets the React app.
+    fetch() calls never ask for text/html, and non-page paths like /health stay JSON."""
     return (
         request.method == "GET"
         and "text/html" in request.headers.get("accept", "")
-        and not request.url.path.startswith(_API_DOC_PATHS)
-        and Path(request.url.path).suffix == ""
+        and bool(_PAGE_ROUTE.match(request.url.path))
         and (_FRONTEND_DIST / "index.html").exists()
     )
 
@@ -184,7 +193,7 @@ def _check_budget(request: Request) -> None:
     if spent >= DAILY_TOKEN_BUDGET:
         raise HTTPException(
             status_code=429,
-            detail=f"Daily token budget reached ({spent:,} of {DAILY_TOKEN_BUDGET:,}). It resets at midnight UTC.",
+            detail=f"Daily token budget reached ({spent:,} of {DAILY_TOKEN_BUDGET:,}). It resets at midnight, server time.",
         )
 
 
@@ -481,7 +490,22 @@ def get_shared_run(token: str):
     if not run:
         raise HTTPException(status_code=404, detail="This share link doesn't exist or was revoked.")
     out = _run_out(run).model_dump()
-    out["certificate"] = build_certificate(run)
+    # The owner shared the result, not their history: recalled memories can quote other
+    # tasks from the workspace, and failed attempts carry tracebacks nobody asked to publish.
+    passing = next((a for a in out["attempts"] if a["success"]), None)
+    public_attempt = {
+        k: passing[k]
+        for k in ("attempt_number", "generated_code", "success", "tests_passed", "tests_total",
+                  "coverage", "quality_overall_score", "sandboxed", "model_name")
+    } if passing else None
+    out.update(
+        memories=[],
+        attempts=[public_attempt] if public_attempt else [],
+        prompt_tokens=None,
+        completion_tokens=None,
+        group_id=None,
+        certificate=build_certificate(run),
+    )
     return out
 
 
@@ -702,6 +726,32 @@ def get_latest_eval_endpoint():
 @app.get("/eval/history", tags=["Evaluation"])
 def eval_history(limit: int = Query(20, ge=1, le=50)):
     return {"items": [{k: v for k, v in d.items() if k != "results"} for d in _all_evals()[:limit]]}
+
+
+@app.get("/eval/agent", tags=["Evaluation"])
+def agent_benchmarks():
+    """
+    Results of `python -m eval.agent_benchmark`: the real pipeline judged by hidden
+    HumanEval+ inputs. Newest first, one entry per model run, with a compact per-problem grid.
+    """
+    found = []
+    for path in glob.glob(os.path.join(RESULTS_DIR, "agentbench_*.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if data.get("kind") != "agent_benchmark":
+            continue
+        grid = {
+            name: [
+                {"id": r["problem_id"], "correct": bool(r["hidden_pass"]), "verified": r.get("self_verified")}
+                for r in records
+            ]
+            for name, records in data.get("records", {}).items()
+        }
+        found.append({**{k: v for k, v in data.items() if k != "records"}, "grid": grid})
+    return {"items": sorted(found, key=lambda d: d.get("run_at", ""), reverse=True)}
 
 
 @app.get("/eval/status/{eval_id}", tags=["Evaluation"])

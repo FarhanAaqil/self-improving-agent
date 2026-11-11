@@ -103,7 +103,14 @@ export interface RunEvent {
 
 export interface QualityReport {
   overall_score: number | null
-  components: Record<'tests' | 'coverage' | 'security' | 'complexity' | 'performance', number | null>
+  components: Record<'tests' | 'mutation' | 'coverage' | 'security' | 'complexity' | 'performance', number | null>
+  mutation?: {
+    available: boolean
+    total: number
+    killed: number
+    score: number | null
+    survivors: { line: number; source: string; change: string }[]
+  } | null
   cyclomatic_complexity: number
   tests_passed?: number | null
   tests_total?: number | null
@@ -284,6 +291,7 @@ export interface Certificate {
   coverage: number | null
   quality_score: number | null
   bandit_issues: number
+  mutation?: { score: number | null; killed: number | null; total: number | null }
   sandbox: { sandboxed: boolean; image: string; timeout_seconds: number; docker_args: string[] }
   signature: string | null
   signed: boolean
@@ -333,4 +341,34 @@ export interface MemoryBucket {
 export interface Improvement {
   daily: DailyStat[]
   memory_effect: { with_memory: MemoryBucket; without_memory: MemoryBucket }
+}
+
+export interface AgentBenchCondition {
+  condition: string
+  description: string
+  problems: number
+  hidden_pass: number
+  hidden_pass_rate: number
+  hidden_pass_ci95: [number, number]
+  avg_tokens: number | null
+  errors?: number
+  self_verified?: number
+  self_verified_rate?: number
+  false_verified?: number
+  false_verified_rate?: number
+  first_try_rate?: number
+  avg_attempts?: number
+  avg_mutation_score?: number | null
+  strengthening?: Record<string, number>
+  runs_that_recalled_memory?: number
+}
+
+export interface AgentBenchRun {
+  eval_id: string
+  model: string
+  date: string
+  run_at: string
+  total_problems: number
+  conditions: AgentBenchCondition[]
+  grid: Record<string, { id: string; correct: boolean; verified: boolean | null }[]>
 }

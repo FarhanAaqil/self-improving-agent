@@ -14,16 +14,22 @@ from datetime import datetime
 
 from app import db, llm
 from app.code_security_audit import CodeSecurityAudit
-from app.config import CRITIQUE_CONFIDENCE_THRESHOLD, MEMORY_ENABLED, MODEL, SANDBOX_TIMEOUT
+from app.config import (
+    CRITIQUE_CONFIDENCE_THRESHOLD,
+    MEMORY_ENABLED,
+    MODEL,
+    MUTATION_ENABLED,
+    SANDBOX_TIMEOUT,
+)
 from app.critique import critique_code, diagnose_failure
 from app.documentation_agent import document_code
 from app.generator import generate_code
-from app.harness import Verification, verify
+from app.harness import Verification, mutation_test, verify
 from app.metrics import calculate_quality_metrics
 from app.observability import metrics
 from app.performance_agent import analyze_performance
 from app.static_analysis import bandit_scan, radon_complexity
-from app.test_agent import generate_spec_tests
+from app.test_agent import generate_spec_tests, merge_tests, strengthen_tests
 
 logger = logging.getLogger("self_improving_agent.pipeline")
 
@@ -40,6 +46,10 @@ class RunSpec:
     workspace: str = "default"
     # A caller's own Groq key: used for this run only, never stored or printed
     groq_key: str | None = field(default=None, repr=False)
+    # Benchmarks turn these off to measure one thing at a time
+    review: bool = True
+    strengthen: bool = True
+    use_memory: bool = True
 
     def skips(self, *names: str) -> bool:
         return any(n in self.skip_agents for n in names)
@@ -57,7 +67,7 @@ class Emitter:
 
 
 def _recall(spec: RunSpec, emit: Emitter) -> tuple[list[dict], str]:
-    if not MEMORY_ENABLED:
+    if not MEMORY_ENABLED or not spec.use_memory:
         return [], ""
     try:
         from app.memory import format_memories, mark_used, retrieve_similar_failures
@@ -77,7 +87,7 @@ def _recall(spec: RunSpec, emit: Emitter) -> tuple[list[dict], str]:
 
 def _remember(spec: RunSpec, solved: bool, first_error: str | None, last_error: str | None,
               last_code: str | None, lesson: str | None) -> None:
-    if not MEMORY_ENABLED:
+    if not MEMORY_ENABLED or not spec.use_memory:
         return
     try:
         from app import memory
@@ -120,14 +130,60 @@ def _verification_event(v: Verification) -> dict:
     }
 
 
+def _harden(spec: RunSpec, code: str, tests: str, v: Verification, emit: Emitter):
+    """
+    Mutation-test the passing code and try once to write stricter tests for the gaps.
+    Returns (tests, verification, mutation_report, diagnosis). `verification.success` is
+    False when the stricter tests exposed a real bug; `diagnosis` is then its explanation.
+    """
+    report = mutation_test(code, tests)
+    emit("mutation_tested", stage="initial", **{k: report.get(k) for k in ("available", "total", "killed", "score")},
+         survivors=report.get("survivors", [])[:5])
+    if not report.get("available") or not report.get("survivors"):
+        return tests, v, report, None
+
+    try:
+        extra = strengthen_tests(spec.task, code, tests, report["survivors"], model_override=spec.model)
+    except Exception as e:
+        logger.warning("Test strengthening failed: %s", e)
+        extra = None
+    if not extra:
+        return tests, v, report, None
+
+    stricter = merge_tests(tests, extra)
+    added = extra.count("def test_")
+    recheck = verify(code, stricter, timeout=SANDBOX_TIMEOUT)
+    if recheck.success:
+        final = mutation_test(code, stricter)
+        emit("tests_strengthened", outcome="kept", added=added)
+        emit("mutation_tested", stage="final", **{k: final.get(k) for k in ("available", "total", "killed", "score")},
+             survivors=final.get("survivors", [])[:5])
+        return stricter, recheck, (final if final.get("available") else report), None
+
+    # The stricter tests fail: is the code wrong, or are the new tests?
+    diag = None
+    if not spec.skips("critique"):
+        try:
+            diag = diagnose_failure(spec.task, code, recheck.feedback(), stricter, model_override=spec.model)
+        except Exception as e:
+            logger.warning("Diagnosis of stricter tests failed: %s", e)
+    if diag is None or diag["blame"] == "tests":
+        emit("tests_strengthened", outcome="discarded", added=added,
+             reason=(diag or {}).get("root_cause", "could not confirm the stricter tests"))
+        return tests, v, report, None
+
+    emit("tests_strengthened", outcome="found_bug", added=added, reason=diag["summary"])
+    return stricter, recheck, report, diag
+
+
 def _review(spec: RunSpec, run_id: str, attempt_id: int, code: str, tests: str | None,
-            verification: Verification, emit: Emitter) -> tuple[str, bool]:
+            verification: Verification, emit: Emitter, mutation: dict | None = None) -> tuple[str, bool]:
     """Run post-success agents. Returns (final_code, docs_applied)."""
     model = spec.model
     reviews: dict = {}
 
     def agent(name: str, fn, *skip_names: str):
-        if spec.skips(name, *skip_names):
+        if not spec.review or spec.skips(name, *skip_names):
             emit("review", agent=name, status="skipped")
             return None
         emit("review", agent=name, status="running")
@@ -170,6 +226,7 @@ def _review(spec: RunSpec, run_id: str, attempt_id: int, code: str, tests: str |
         security_audit=reviews["security"],
         bandit=bandit,
         radon=radon,
+        mutation=mutation,
     )
     db.update_attempt_review(
         attempt_id=attempt_id,
@@ -231,6 +288,8 @@ def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
     first_error: str | None = None
     lesson: str | None = None
     test_rewrites = 0
+    hardened = False
+    mutation: dict | None = None
 
     for attempt in range(1, spec.max_attempts + 1):
         db.update_run(run_id, total_attempts=attempt)
@@ -253,13 +312,19 @@ def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
         v = verify(code, tests, timeout=SANDBOX_TIMEOUT)
         emit("sandbox_result", attempt=attempt, **_verification_event(v))
 
+        ready_diag = None
+        if v.success and tests and not hardened and MUTATION_ENABLED and spec.strengthen and not spec.skips("mutation"):
+            hardened = True  # one hardening round per run
+            tests, v, mutation, ready_diag = _harden(spec, code, tests, v, emit)
+            db.update_run(run_id, spec_tests=tests)
+
         if v.success:
             attempt_id = db.insert_attempt(
                 run_id=run_id, attempt_number=attempt, generated_code=code, model_name=spec.model,
                 **_attempt_record(v),
             )
             emit("verified", attempt=attempt, passed=v.passed, total=v.total, coverage=v.coverage)
-            final_code, docs_applied = _review(spec, run_id, attempt_id, code, tests, v, emit)
+            final_code, docs_applied = _review(spec, run_id, attempt_id, code, tests, v, emit, mutation)
             db.update_run(run_id, final_code=final_code, docs_applied=docs_applied)
             _remember(spec, True, first_error, None, None, lesson)
             return "success"
@@ -268,8 +333,8 @@ def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
         first_error = first_error or feedback
         previous_code = code
 
-        diag = None
-        if not spec.skips("critique"):
+        diag = ready_diag
+        if diag is None and not spec.skips("critique"):
             emit("diagnosing", attempt=attempt)
             try:
                 diag = diagnose_failure(spec.task, code, feedback, tests, model_override=spec.model)

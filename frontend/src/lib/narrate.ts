@@ -65,6 +65,30 @@ export function narrate(event: RunEvent): StoryLine | null {
       return { ...base, mood: 'thinking', text: 'The tests themselves looked wrong, so I rewrote them.', detail: str(p.reason) }
     case 'early_stop':
       return { ...base, mood: 'failure', text: "I'm stopping here; another try won't help.", detail: str(p.reason) }
+    case 'mutation_tested': {
+      if (!p.available || !num(p.total)) return null
+      const total = num(p.total)
+      const killed = num(p.killed)
+      const survivors = Array.isArray(p.survivors) ? (p.survivors as { line: number; change: string }[]) : []
+      if (p.stage === 'final') {
+        return { ...base, mood: killed === total ? 'success' : 'neutral', text: `With the stricter tests, ${killed} of ${total} deliberate breaks get caught.` }
+      }
+      const ways = `${total} different way${total === 1 ? '' : 's'}`
+      return killed === total
+        ? { ...base, mood: 'success', text: `I broke my own code ${ways} and the tests caught ${total === 1 ? 'it' : 'every one'}.` }
+        : {
+            ...base,
+            mood: 'thinking',
+            text: `I broke my own code ${ways}; the tests missed ${total - killed}. Writing stricter tests…`,
+            detail: survivors[0] ? `e.g. line ${survivors[0].line}: ${survivors[0].change} went unnoticed` : undefined,
+          }
+    }
+    case 'tests_strengthened': {
+      const added = num(p.added)
+      if (p.outcome === 'kept') return { ...base, mood: 'success', text: `Added ${added} stricter test${added === 1 ? '' : 's'}. The code still passes.` }
+      if (p.outcome === 'found_bug') return { ...base, mood: 'failure', text: 'The stricter tests caught a real bug the first tests missed. Fixing it.', detail: str(p.reason) }
+      return { ...base, mood: 'neutral', text: 'The stricter tests I tried turned out to be wrong, so I dropped them.' }
+    }
     case 'verified':
       return { ...base, mood: 'success', text: `Verified on attempt ${num(p.attempt)}.` }
     case 'static_analysis': {

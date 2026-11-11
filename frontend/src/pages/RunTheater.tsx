@@ -364,9 +364,26 @@ export default function RunTheater() {
                 <div><dt className="text-ink-muted">sandbox time</dt><dd className="text-ink">{duration(run.attempts.reduce((s, a) => s + (a.latency_ms ?? 0), 0))}</dd></div>
                 <div><dt className="text-ink-muted">coverage</dt><dd className="text-ink">{pct(passing.coverage)}</dd></div>
                 <div><dt className="text-ink-muted">docstrings</dt><dd className="text-ink">{run.docs_applied ? 'added & re-verified' : 'not applied'}</dd></div>
+                <div>
+                  <dt className="text-ink-muted">test strength</dt>
+                  <dd className="text-ink">
+                    {quality?.mutation?.available ? `${quality.mutation.killed}/${quality.mutation.total} breaks caught` : 'not measured'}
+                  </dd>
+                </div>
                 <div><dt className="text-ink-muted">bandit</dt><dd className="text-ink">{quality ? `${quality.bandit_issues.length} issue(s)` : '—'}</dd></div>
                 <div><dt className="text-ink-muted">complexity</dt><dd className="text-ink">{quality?.cyclomatic_complexity ?? '—'}</dd></div>
               </dl>
+              {quality?.mutation?.survivors && quality.mutation.survivors.length > 0 && (
+                <div className="border-l-2 border-cyan pl-3 text-xs text-ink-secondary">
+                  <p className="font-semibold text-ink">Changes the tests would not notice</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {quality.mutation.survivors.slice(0, 4).map((s, i) => (
+                      <li key={i}><span className="font-mono">L{s.line}</span> {s.change}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-ink-muted">Some of these are harmless (the change does not alter behaviour); others are untested edges.</p>
+                </div>
+              )}
               {quality && quality.bandit_issues.length > 0 && (
                 <ul className="space-y-1 border-l-2 border-status-warning pl-3 text-xs text-ink-secondary">
                   {quality.bandit_issues.slice(0, 4).map((i) => (

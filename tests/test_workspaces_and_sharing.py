@@ -171,3 +171,40 @@ def test_json_logs_carry_the_request_id():
     finally:
         request_id.reset(token)
     assert entry["msg"] == "hello world" and entry["request_id"] == "req-42"
+
+
+def test_public_share_shows_the_result_but_not_history_or_memories():
+    make_verified_run("run_private_bits")
+    db.update_run("run_private_bits", memories_json='[{"id": "m1", "task": "another customer task", "similarity": 0.9}]')
+    token = client.post("/runs/run_private_bits/share").json()["token"]
+
+    owner_view = client.get("/runs/run_private_bits").json()
+    assert len(owner_view["attempts"]) == 2 and owner_view["memories"]
+
+    public = client.get(f"/shared/{token}").json()
+    assert public["memories"] == []
+    assert [a["attempt_number"] for a in public["attempts"]] == [2]      # only the passing one
+    assert "stderr" not in public["attempts"][0] and "stdout" not in public["attempts"][0]
+    assert "another customer task" not in json.dumps(public)
+    assert public["final_code"] and public["certificate"]["tests"]["total"] == 4
+
+
+def test_only_page_routes_get_the_app_shell():
+    from app.main import _FRONTEND_DIST
+
+    if not (_FRONTEND_DIST / "index.html").exists():
+        pytest.skip("frontend/dist not built")
+    html = {"Accept": "text/html"}
+    for page in ("/", "/history", "/eval", "/runs/run_abc", "/shared/tok-en_1", "/compare/cmp_1"):
+        assert "text/html" in client.get(page, headers=html).headers["content-type"], page
+    # API-only paths stay JSON even when a browser asks
+    for api in ("/health", "/models", "/sandbox/config", "/eval/latest"):
+        assert client.get(api, headers=html).headers["content-type"].startswith("application/json"), api
+
+
+def test_groq_client_cache_is_bounded():
+    from app import llm
+
+    for i in range(llm._MAX_CLIENTS + 10):
+        llm.get_client(f"gsk_fake_{i}")
+    assert len(llm._clients) <= llm._MAX_CLIENTS

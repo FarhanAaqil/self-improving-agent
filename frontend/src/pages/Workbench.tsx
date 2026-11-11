@@ -37,6 +37,7 @@ const TEMPLATES = [
 
 const AGENTS = [
   { id: 'test', label: 'spec tests', hint: 'write tests before code' },
+  { id: 'mutation', label: 'test strength', hint: 'break the code on purpose, then write stricter tests' },
   { id: 'critique', label: 'diagnosis', hint: 'explain failures' },
   { id: 'performance', label: 'performance', hint: 'big-O review' },
   { id: 'security_audit', label: 'security audit', hint: 'LLM review + bandit' },

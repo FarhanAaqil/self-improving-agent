@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { getEvalHistory, getEvalStatus, getLatestEval, triggerEval } from '../api/client'
 import type { BenchmarkResult } from '../api/types'
+import AgentBenchmarkPanel from '../components/AgentBenchmarkPanel'
 import { Chip, EmptyState, ErrorNote, Meter, PageHeader, Panel, Skeleton } from '../components/ui'
 
 // Ordinal teal: solved on attempt 1 is the strongest mark (validated light/dark ramps)
@@ -118,6 +119,8 @@ export default function Benchmarks() {
           {status.data.error && <p className="mt-2 text-xs text-status-danger">{status.data.error}</p>}
         </Panel>
       )}
+
+      <AgentBenchmarkPanel />
 
       {latest.isLoading ? (
         <Skeleton className="h-64" />

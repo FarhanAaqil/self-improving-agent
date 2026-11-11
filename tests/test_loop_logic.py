@@ -37,7 +37,15 @@ def diagnosis(confidence=0.8, blame="code"):
     }
 
 
-def run_pipeline(codes, verifications, *, diag=None, skip=None, docs=None, tests=SPEC_TESTS, extra=None):
+NO_MUTANTS = {"available": False, "total": 0, "killed": 0, "score": None, "survivors": [], "error": None}
+GAP = {"available": True, "total": 4, "killed": 2, "score": 0.5, "error": None,
+       "survivors": [{"line": 1, "source": "return 42", "change": "`42` became `43`"}]}
+TIGHT = {"available": True, "total": 4, "killed": 4, "score": 1.0, "survivors": [], "error": None}
+EXTRA_TESTS = "def test_answer():\n    assert solve() != 43\n"
+
+
+def run_pipeline(codes, verifications, *, diag=None, skip=None, docs=None, tests=SPEC_TESTS, extra=None,
+                 mutations=None, extra_tests=None):
     """Drive /generate-and-repair with every external dependency mocked."""
     mocks = {
         "generate_code": MagicMock(side_effect=codes),
@@ -47,6 +55,8 @@ def run_pipeline(codes, verifications, *, diag=None, skip=None, docs=None, tests
         "analyze_performance": MagicMock(return_value="OPTIMIZED"),
         "document_code": MagicMock(return_value=docs),
         "critique_code": MagicMock(return_value={"confidence": 0.95, "reasoning": "Clean"}),
+        "mutation_test": MagicMock(side_effect=mutations or [NO_MUTANTS] * 4),
+        "strengthen_tests": MagicMock(return_value=extra_tests),
     }
     with ExitStack() as stack:
         for name, mock in mocks.items():
@@ -227,3 +237,48 @@ def test_runs_listing_paginates_and_filters():
     assert page["total"] >= 3
     assert all(item["final_status"] == "success" for item in page["items"])
     assert client.get("/runs", params={"status": "bogus"}).status_code == 422
+
+
+def test_stricter_tests_are_kept_when_the_code_still_passes():
+    data, m = run_pipeline(
+        ["def solve(): return 42"], [passed(), passed(total=2)],
+        mutations=[GAP, TIGHT], extra_tests=EXTRA_TESTS,
+    )
+    assert data["final_status"] == "success"
+    # The extra test was renamed instead of shadowing the original
+    assert "def test_answer_strict(" in data["spec_tests"] and "def test_answer(" in data["spec_tests"]
+    report = json.loads(data["attempts"][0]["quality_report_json"])
+    assert report["components"]["mutation"] == 1.0
+    assert report["mutation"]["killed"] == 4
+    assert m["strengthen_tests"].call_args.args[3] == GAP["survivors"]
+
+
+def test_stricter_tests_that_expose_a_real_bug_send_the_code_back_for_repair():
+    data, m = run_pipeline(
+        ["def solve(): return 42", "def solve(): return 42  # fixed"],
+        [passed(), failed("AssertionError: boundary"), passed(total=2)],
+        mutations=[GAP], extra_tests=EXTRA_TESTS, diag=diagnosis(blame="code"),
+    )
+    assert data["final_status"] == "success"
+    assert [a["success"] for a in data["attempts"]] == [False, True]
+    # The repair saw the stricter tests and the diagnosis, and the bug was diagnosed only once
+    repair = m["generate_code"].call_args_list[1].kwargs
+    assert "test_answer_strict" in repair["tests"]
+    assert m["diagnose_failure"].call_count == 1
+
+
+def test_stricter_tests_blamed_by_the_diagnosis_are_dropped():
+    data, m = run_pipeline(
+        ["def solve(): return 42"], [passed(), failed("AssertionError: bogus")],
+        mutations=[GAP], extra_tests=EXTRA_TESTS, diag=diagnosis(blame="tests"),
+    )
+    assert data["final_status"] == "success"
+    assert data["total_attempts"] == 1
+    assert data["spec_tests"] == SPEC_TESTS
+    assert m["generate_code"].call_count == 1
+
+
+def test_hardening_can_be_skipped():
+    data, m = run_pipeline(["def solve(): return 42"], [passed()], skip=["mutation"])
+    assert data["final_status"] == "success"
+    m["mutation_test"].assert_not_called()
