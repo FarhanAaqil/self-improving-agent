@@ -245,8 +245,8 @@ def test_app_shell_is_never_cached_in_place_of_json():
     if not (_FRONTEND_DIST / "index.html").exists():
         pytest.skip("frontend/dist not built")
     page = client.get("/shared/some-token", headers={"Accept": "text/html"})
-    assert page.headers["vary"] == "Accept"
-    assert "no-store" in page.headers["cache-control"]
+    assert "Accept" in page.headers["vary"].split(", ")
+    assert page.headers["cache-control"] == "no-cache"  # revalidated every time, bfcache-friendly
     assert "no-store" in client.get("/shared/some-token").headers["cache-control"]
 
 
@@ -279,3 +279,39 @@ def test_frontend_types_only_use_fields_the_api_really_returns():
     assert not (ts_fields("HealthResponse") - health), ts_fields("HealthResponse") - health
     usage = set(client.get("/usage").json())
     assert not (ts_fields("Usage") - usage)
+
+
+def test_responses_are_compressed_but_the_live_event_stream_is_not():
+    from app.db import insert_run
+
+    for i in range(30):  # enough rows that the run list is worth compressing
+        insert_run(f"run_gzip_{i}", "a fairly long task description " * 4, final_status="success")
+    listed = client.get("/runs", params={"page_size": 30}, headers={"Accept-Encoding": "gzip"})
+    assert listed.headers.get("content-encoding") == "gzip"
+
+    with client.stream("GET", "/runs/run_gzip_0/events", headers={"Accept-Encoding": "gzip"}) as resp:
+        assert resp.headers.get("content-encoding") is None   # events must flush one by one
+        assert "run_finished" in "".join(resp.iter_text())
+
+
+def test_public_endpoints_revalidate_with_etags():
+    first = client.get("/models")
+    assert first.headers["cache-control"] == "no-cache"
+    etag = first.headers["etag"]
+    again = client.get("/models", headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.content == b""
+    # Private, per-user data is never stored
+    assert client.get("/runs").headers["cache-control"].startswith("no-store")
+
+
+def test_hashed_build_assets_are_cached_for_a_year():
+    import pytest
+
+    from app.main import _FRONTEND_DIST
+
+    assets = list((_FRONTEND_DIST / "assets").glob("*.js")) if (_FRONTEND_DIST / "assets").exists() else []
+    if not assets:
+        pytest.skip("frontend/dist not built")
+    resp = client.get(f"/assets/{assets[0].name}")
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "public, max-age=31536000, immutable"

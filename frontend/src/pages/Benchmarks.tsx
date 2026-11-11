@@ -1,10 +1,12 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { BarChart3, Play, X } from 'lucide-react'
-import { useState } from 'react'
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { getEvalHistory, getEvalStatus, getLatestEval, triggerEval } from '../api/client'
+import { lazy, Suspense, useState } from 'react'
+import { getAgentBenchmarks, getEvalHistory, getEvalStatus, getLatestEval, triggerEval } from '../api/client'
 import type { BenchmarkResult } from '../api/types'
 import AgentBenchmarkPanel from '../components/AgentBenchmarkPanel'
+
+// The charts library is ~300KB; only fetch it when there is a history worth drawing
+const BenchmarkHistoryChart = lazy(() => import('../components/BenchmarkHistoryChart'))
 import { Chip, EmptyState, ErrorNote, Meter, PageHeader, Panel, Skeleton } from '../components/ui'
 
 // Ordinal teal: solved on attempt 1 is the strongest mark (validated light/dark ramps)
@@ -67,6 +69,9 @@ export default function Benchmarks() {
   const [size, setSize] = useState(10)
 
   const latest = useQuery({ queryKey: ['eval-latest'], queryFn: getLatestEval })
+  // Same query the panel uses (shared cache): wait for both so panels don't push each other down
+  const agentRuns = useQuery({ queryKey: ['agent-benchmarks'], queryFn: getAgentBenchmarks })
+  const settling = latest.isLoading || agentRuns.isLoading
   const history = useQuery({ queryKey: ['eval-history'], queryFn: getEvalHistory })
   const status = useQuery({
     queryKey: ['eval-status', evalId],
@@ -120,9 +125,9 @@ export default function Benchmarks() {
         </Panel>
       )}
 
-      <AgentBenchmarkPanel />
+      {settling ? <Skeleton className="h-[28rem]" /> : <AgentBenchmarkPanel />}
 
-      {latest.isLoading ? (
+      {settling ? null : latest.isLoading ? (
         <Skeleton className="h-64" />
       ) : !result ? (
         <EmptyState icon={<BarChart3 className="h-8 w-8" />} title="No benchmark yet">
@@ -151,24 +156,9 @@ export default function Benchmarks() {
 
           {points.length >= 2 && (
             <Panel title="over time">
-              <div className="h-64" role="img" aria-label="Baseline and agent solve rate across benchmark runs">
-                <ResponsiveContainer>
-                  <LineChart data={points} margin={{ top: 8, right: 16, left: -8, bottom: 0 }}>
-                    <CartesianGrid stroke="rgb(var(--chart-grid))" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: 'rgb(var(--ink-muted))', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 100]} unit="%" tick={{ fill: 'rgb(var(--ink-muted))', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ background: 'rgb(var(--surface))', border: '1px solid rgb(var(--border))', borderRadius: 0, fontSize: 12 }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="agent" name="agent solve@k" stroke="rgb(var(--chart-1))" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: 'rgb(var(--surface))' }} />
-                    <Line type="monotone" dataKey="baseline" name="baseline" stroke="rgb(var(--chart-2))" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: 'rgb(var(--surface))' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <table className="sr-only">
-                <caption>Benchmark history</caption>
-                <thead><tr><th>date</th><th>baseline</th><th>agent</th></tr></thead>
-                <tbody>{points.map((p, i) => <tr key={i}><td>{p.date}</td><td>{p.baseline}%</td><td>{p.agent}%</td></tr>)}</tbody>
-              </table>
+              <Suspense fallback={<Skeleton className="h-64" />}>
+                <BenchmarkHistoryChart points={points} />
+              </Suspense>
             </Panel>
           )}
         </>

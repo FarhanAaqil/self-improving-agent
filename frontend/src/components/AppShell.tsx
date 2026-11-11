@@ -1,13 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Command, KeyRound, Moon, Sun } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { getStoredApiKey, getUsage, listRuns } from '../api/client'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences } from '../hooks/usePreferences'
-import ApiKeyDialog from './ApiKeyDialog'
 import BrandLogo from './BrandLogo'
-import CommandPalette from './CommandPalette'
 import { NAV_ITEMS } from './nav'
 import { Kbd, Meter } from './ui'
 
@@ -24,6 +22,10 @@ function useHotkey(handler: () => void) {
   }, [handler])
 }
 
+// Only needed once opened, so they stay out of the first download
+const ApiKeyDialog = lazy(() => import('./ApiKeyDialog'))
+const CommandPalette = lazy(() => import('./CommandPalette'))
+
 export default function AppShell() {
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -39,7 +41,8 @@ export default function AppShell() {
   const { data: active } = useQuery({
     queryKey: ['runs-active'],
     queryFn: () => listRuns({ pageSize: 3, status: 'running' }),
-    refetchInterval: 4000,
+    // Quick while something is running, relaxed when idle (and paused in background tabs)
+    refetchInterval: (q) => (q.state.data?.items.length ? 4000 : 20000),
     enabled: !needsKey,
   })
   const liveRun = active?.items[0]
@@ -111,7 +114,7 @@ export default function AppShell() {
               <div className="mt-1"><Meter value={usage.tokens_today / usage.daily_budget} tone={usage.remaining ? 'accent' : 'cyan'} label="Daily token budget used" /></div>
             </div>
           ) : null}
-          <div className="text-ink-tertiary">v{health?.version ?? '…'}</div>
+          <div className="text-ink-muted">v{health?.version ?? '…'}</div>
         </div>
       </aside>
 
@@ -125,7 +128,7 @@ export default function AppShell() {
             <span className="font-semibold text-ink">{location.pathname === '/' ? 'workbench' : location.pathname.slice(1)}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => setPaletteOpen(true)} className="btn-ghost hidden px-2 py-1 sm:inline-flex" aria-label="Open command palette">
+            <button type="button" onClick={() => setPaletteOpen(true)} className="btn-ghost hidden px-2 py-1 sm:inline-flex" aria-label="Command palette, Ctrl K">
               <Command className="h-3.5 w-3.5" aria-hidden />
               <Kbd>Ctrl K</Kbd>
             </button>
@@ -134,7 +137,7 @@ export default function AppShell() {
                 type="button"
                 onClick={() => setKeyOpen(true)}
                 className={`btn px-2 py-1 ${needsKey ? 'border border-accent bg-accent-subtle text-accent-ink' : 'btn-ghost'}`}
-                aria-label="Set API key"
+                aria-label={needsKey ? 'key needed: add API key' : 'key set: change API key'}
               >
                 <KeyRound className="h-3.5 w-3.5" aria-hidden />
                 <span className="hidden sm:inline">{needsKey ? 'key needed' : 'key set'}</span>
@@ -188,15 +191,19 @@ export default function AppShell() {
         ))}
       </nav>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <ApiKeyDialog
-        open={keyOpen}
-        onClose={() => setKeyOpen(false)}
-        onSaved={() => {
-          setHasKey(Boolean(getStoredApiKey()))
-          queryClient.invalidateQueries()
-        }}
-      />
+      <Suspense fallback={null}>
+        {paletteOpen && <CommandPalette open onClose={() => setPaletteOpen(false)} />}
+        {keyOpen && (
+          <ApiKeyDialog
+            open
+            onClose={() => setKeyOpen(false)}
+            onSaved={() => {
+              setHasKey(Boolean(getStoredApiKey()))
+              queryClient.invalidateQueries()
+            }}
+          />
+        )}
+      </Suspense>
     </div>
   )
 }

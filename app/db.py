@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
@@ -8,23 +9,68 @@ from typing import Any
 
 from app.config import DB_PATH
 
+# Connection pool: one open connection per (thread, database). Opening a SQLite connection
+# and setting its pragmas costs about a millisecond and a half, far more than a typical
+# query here, so each worker thread keeps its own and reuses it.
+_local = threading.local()
+
+
+def _open(db_path: str) -> sqlite3.Connection:
+    # Ensure parent directory exists before SQLite creates the file
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=10, check_same_thread=True)
+    conn.row_factory = sqlite3.Row
+    # WAL mode prevents database locks between readers and concurrent attempt writers.
+    # Foreign keys pragma must be turned on explicitly per connection in SQLite.
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+    conn.execute("PRAGMA synchronous=NORMAL;")  # safe with WAL, much cheaper commits
+    return conn
+
 
 @contextmanager
 def get_connection(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
-    """Open a connection, commit on success, roll back on error, and always close it."""
-    # Ensure parent directory exists before SQLite creates the file
-    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=10)
-    conn.row_factory = sqlite3.Row
+    """A pooled connection for this thread: commit on success, roll back on error."""
+    key = os.path.abspath(db_path)
+    pool: dict = getattr(_local, "pool", None) or {}
+    _local.pool = pool
+    busy: set = getattr(_local, "busy", None) or set()
+    _local.busy = busy
+
+    if key in busy:
+        # Nested use in the same thread gets its own short-lived connection, so an inner
+        # block can never commit or roll back the outer block's transaction.
+        conn = _open(db_path)
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+        return
+
+    conn = pool.get(key)
+    if conn is None:
+        conn = pool[key] = _open(db_path)
+    busy.add(key)
     try:
-        # WAL mode prevents database locks between readers and concurrent attempt writers.
-        # Foreign keys pragma must be turned on explicitly per connection in SQLite.
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA foreign_keys=ON;")
         with conn:
             yield conn
+    except sqlite3.ProgrammingError:
+        # The pooled connection was closed underneath us; drop it so the next call reopens
+        pool.pop(key, None)
+        raise
     finally:
-        conn.close()
+        busy.discard(key)
+
+
+def close_pooled_connections() -> None:
+    """Close this thread's pooled connections (tests and shutdown)."""
+    for conn in (getattr(_local, "pool", None) or {}).values():
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    _local.pool = {}
 
 
 def init_db(db_path: str = DB_PATH) -> None:
@@ -82,12 +128,20 @@ def init_db(db_path: str = DB_PATH) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_events_run ON run_events(run_id, event_id);
         CREATE INDEX IF NOT EXISTS idx_attempts_run_id ON attempts(run_id);
+        CREATE INDEX IF NOT EXISTS idx_attempts_run_number ON attempts(run_id, attempt_number);
         CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_attempts_timestamp ON attempts(timestamp DESC);
         """)
 
         _add_missing_columns(conn, "attempts", ATTEMPT_COLUMNS)
         _add_missing_columns(conn, "runs", RUN_COLUMNS)
+        # Indexes on columns added by migrations, so they exist on old and new databases alike
+        conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_runs_share_token ON runs(share_token) WHERE share_token IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_runs_group ON runs(group_id) WHERE group_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_runs_workspace_created ON runs(workspace, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(final_status);
+        """)
 
 
 # Columns added after the first release. New databases and old ones converge on the same shape.
@@ -428,12 +482,27 @@ def list_run_summaries(
         params.append(workspace)
     clause = f" WHERE {' AND '.join(where)}" if where else ""
 
+    page_sql = f"""
+        WITH page AS (
+            SELECT r.* FROM runs r{clause} ORDER BY r.created_at DESC LIMIT ? OFFSET ?
+        ),
+        agg AS (
+            SELECT a.run_id,
+                   MIN(CASE WHEN a.success = 1 THEN a.attempt_number END) AS passed_on_attempt,
+                   MAX(a.quality_overall_score) AS quality_score,
+                   COALESCE(SUM(a.latency_ms), 0) AS total_latency_ms
+            FROM attempts a WHERE a.run_id IN (SELECT run_id FROM page)
+            GROUP BY a.run_id
+        )
+        SELECT p.run_id, p.task_description, p.created_at, p.final_status, p.total_attempts,
+               p.model_name, p.prompt_tokens, p.completion_tokens, p.finished_at, p.group_id,
+               agg.passed_on_attempt, agg.quality_score, COALESCE(agg.total_latency_ms, 0) AS total_latency_ms
+        FROM page p LEFT JOIN agg ON agg.run_id = p.run_id
+        ORDER BY p.created_at DESC
+    """
     with get_connection(db_path) as conn:
         total = conn.execute(f"SELECT COUNT(*) FROM runs r{clause}", params).fetchone()[0]
-        rows = conn.execute(
-            f"{_SUMMARY_SQL}{clause} ORDER BY r.created_at DESC LIMIT ? OFFSET ?",
-            [*params, page_size, (page - 1) * page_size],
-        ).fetchall()
+        rows = conn.execute(page_sql, [*params, page_size, (page - 1) * page_size]).fetchall()
         counts = {
             row["final_status"]: row["n"]
             for row in conn.execute(

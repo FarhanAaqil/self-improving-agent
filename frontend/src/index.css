@@ -1,3 +1,22 @@
+/* Self-hosted variable fonts (Latin subset): no render-blocking third-party stylesheet,
+   one file per family covers every weight, and text shows immediately in a fallback. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-v1.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-v1.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -15,21 +34,22 @@
   --surface-raised: 250 251 249;
   --ink: 16 36 28;                /* #10241C */
   --ink-secondary: 82 101 90;     /* #52655A */
-  --ink-muted: 96 113 103;        /* readable meta text, 5:1 on canvas */
+  --ink-muted: 86 102 93;         /* readable meta text: 5.4:1 on canvas, 4.9:1 on grey wells */
   --ink-tertiary: 147 163 153;    /* #93A399 decoration only */
   --ink-inverse: 240 243 239;
   --accent: 255 90 31;            /* #FF5A1F */
   --accent-hover: 228 78 23;      /* #E44E17 */
   --accent-subtle: 255 232 220;   /* #FFE8DC */
   --accent-ink: 184 58 12;        /* accent as text, AA on white */
-  --cyan: 14 124 134;             /* #0E7C86 */
+  --on-accent: 16 36 28;          /* text on an orange fill: brand ink, 5.2:1 */
+  --cyan: 11 108 117;             /* #0B6C75, 5.4:1 on its tint */
   --cyan-hover: 10 92 100;
   --cyan-subtle: 224 243 245;
   --success: 31 122 77;
   --success-subtle: 223 241 228;
-  --warning: 181 121 10;
+  --warning: 140 90 0;             /* 5.1:1 on its tint */
   --warning-subtle: 251 238 214;
-  --danger: 196 59 42;
+  --danger: 168 44 30;             /* 5.7:1 on its tint */
   --danger-subtle: 251 228 223;
   --border: 203 211 199;          /* #CBD3C7 */
   --border-strong: 159 173 154;   /* #9FAD9A */
@@ -54,6 +74,7 @@
   --accent-hover: 255 128 82;
   --accent-subtle: 58 36 24;
   --accent-ink: 255 140 98;
+  --on-accent: 16 36 28;
   --cyan: 63 184 194;
   --cyan-hover: 110 206 214;
   --cyan-subtle: 16 52 58;
@@ -117,7 +138,7 @@
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-accent text-white hover:bg-accent-hover shadow-ledger-accent;
+    @apply btn bg-accent text-[rgb(var(--on-accent))] hover:bg-accent-hover shadow-ledger-accent;
   }
   .btn-secondary {
     @apply btn bg-surface text-ink border border-border-strong hover:bg-surface-sunken;

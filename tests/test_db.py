@@ -22,6 +22,9 @@ def temp_db():
     os.close(fd)
     init_db(path)
     yield path
+    from app.db import close_pooled_connections
+
+    close_pooled_connections()
     if os.path.exists(path):
         try:
             os.remove(path)
@@ -132,3 +135,57 @@ def test_eval_run_persistence(temp_db):
     assert latest["eval_id"] == eval_id
     assert latest["pass_at_1"] == 76.5
     assert latest["raw_json"] == '{"sample": true}'
+
+
+def test_connections_are_pooled_per_thread(temp_db):
+    import threading
+
+    from app.db import get_connection
+
+    with get_connection(temp_db) as first:
+        pass
+    with get_connection(temp_db) as second:
+        pass
+    assert first is second
+
+    other = []
+    t = threading.Thread(target=lambda: other.append(get_connection(temp_db).__enter__()))
+    t.start()
+    t.join()
+    assert other[0] is not first  # SQLite connections never cross threads
+
+
+def test_nested_use_gets_its_own_connection_and_failures_roll_back(temp_db):
+    from app.db import get_connection, get_run, insert_run
+
+    # Nested use in one thread never shares (and so never commits) the outer transaction
+    with get_connection(temp_db) as outer:
+        outer.execute("SELECT 1").fetchone()
+        with get_connection(temp_db) as inner:
+            assert inner is not outer
+        insert_run("r_inner", "t", db_path=temp_db)
+    assert get_run("r_inner", db_path=temp_db) is not None
+
+    # A block that fails rolls back its own write, and the pooled connection stays usable
+    with pytest.raises(RuntimeError):
+        with get_connection(temp_db) as conn:
+            conn.execute(
+                "INSERT INTO runs (run_id, task_description, created_at, final_status) VALUES ('r_rb', 't', 'now', 'x')"
+            )
+            raise RuntimeError("block fails")
+    assert get_run("r_rb", db_path=temp_db) is None
+    insert_run("r_after", "t", db_path=temp_db)
+    assert get_run("r_after", db_path=temp_db) is not None
+
+
+def test_run_summaries_aggregate_attempts_for_the_page(temp_db):
+    from app.db import insert_attempt, insert_run, list_run_summaries
+
+    insert_run("r_sum", "task", final_status="success", total_attempts=2, db_path=temp_db)
+    insert_attempt("r_sum", 1, "a", success=False, latency_ms=100, db_path=temp_db)
+    insert_attempt("r_sum", 2, "b", success=True, latency_ms=250, quality_overall_score=0.9, db_path=temp_db)
+    insert_run("r_none", "no attempts", db_path=temp_db)
+    items = {i["run_id"]: i for i in list_run_summaries(db_path=temp_db)["items"]}
+    assert items["r_sum"]["passed_on_attempt"] == 2
+    assert items["r_sum"]["total_latency_ms"] == 350 and items["r_sum"]["quality_score"] == 0.9
+    assert items["r_none"]["passed_on_attempt"] is None and items["r_none"]["total_latency_ms"] == 0
