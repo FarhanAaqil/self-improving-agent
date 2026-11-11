@@ -141,6 +141,16 @@ graph TD
 There are two benchmarks:
 
 1. **`python -m eval.agent_benchmark`** runs the *real pipeline* (spec tests, repair, stricter tests, memory) and judges its final code with **HumanEval+**: about 750 hidden inputs per problem, with expected values computed by running the reference solution beside the candidate in the sandbox. It answers the questions that matter: how often is the code actually correct, how often is a run stamped "verified" in fact wrong, and does meeting the same tasks again with memory help? Long runs checkpoint and resume, because free-tier rate limits make them take hours.
+
+**Result: real pipeline vs. a single shot** (`gpt-oss-120b`, 30 HumanEval+ problems, hidden tests the agent never sees; brackets are 95% confidence intervals):
+
+| Setup | Actually correct | Stamped "verified" but wrong |
+|---|---|---|
+| Single shot, no tests, no feedback | 28/30 · 93.3% [78.7–98.2] | — |
+| Agent (spec tests + repair loop) | 29/30 · 96.7% [83.3–99.4] | 1 of 30 |
+
+The agent fixed two problems the single shot got wrong and broke one it had right, so the gain is small and the intervals overlap. When it says "verified", it was right 29 times out of 30. The memory and stricter-tests conditions were not run to completion; the free Groq tier's daily token cap made them a multi-day job, and this project stops here. Raw data: `results/agentbench_2026-11-11_*.json`.
+
 2. **`python -m eval.benchmark`** is the simpler complete-and-retry loop on plain HumanEval, kept as a sanity baseline:
 
 - **Baseline:** one single-shot completion per problem, no feedback.
@@ -161,7 +171,7 @@ Official HumanEval, 40 problems, `qwen/qwen3.8-27b`, run 2026-11-02 in the Docke
 | Average attempts | 1.02 |
 <!-- BENCHMARK_TABLE_END -->
 
-> **Reading this honestly:** modern models have largely saturated HumanEval, so the baseline sits at the ceiling and repair has nothing left to add here. The repair loop is aimed at harder, under-specified tasks, and a tougher suite such as HumanEval+ or MBPP+ is the next benchmark to add.
+> **Reading this honestly:** modern models have largely saturated plain HumanEval, so the baseline sits at the ceiling and repair has nothing left to add there. That is why the HumanEval+ benchmark above exists.
 
 *The table is generated from committed JSON in `results/` by `scripts/generate_readme_table.py`; it is never hand-typed. Older numbers from the simplified 50-problem set are archived in `results/legacy/` with an explanation of why they are not comparable.*
 
@@ -277,7 +287,7 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside `APP_ENV=
 | End-to-end | Playwright drives the real UI against the real sandbox in offline demo mode: a run fails, gets diagnosed, repaired and verified; share links; attacks; theme and command palette | `cd e2e && npx playwright test` |
 | Live | One real Groq + Docker run, and the benchmark | `pytest -m integration`, `python -m eval.benchmark` |
 
-CI runs lint, backend (with coverage gate), frontend, end-to-end and an informational dependency audit on every push. Benchmarks only run on `main` when the `GROQ_API_KEY` secret is set.
+CI runs lint, backend (with coverage gate), frontend, end-to-end and an informational dependency audit on every push. Benchmarks call a real model, so they are run by hand rather than in CI.
 
 ---
 
