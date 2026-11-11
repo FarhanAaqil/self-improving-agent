@@ -36,7 +36,7 @@ function MemoryCard({ m, onPin, onDelete }: { m: MemoryItem; onPin: () => void; 
         {lesson && m.lesson && <p className="text-ink-secondary"><span className="font-semibold text-cyan">what fixed it:</span> {m.lesson}</p>}
       </div>
       <div className="mt-auto flex justify-between pt-3 font-mono text-[10px] text-ink-muted">
-        <span>recalled {m.uses ?? 0}×</span>
+        <span>{(m.seen ?? 1) > 1 ? `seen ${m.seen}× · ` : ''}recalled {m.uses ?? 0}×</span>
         <span>{relativeTime(m.timestamp)}</span>
       </div>
     </article>

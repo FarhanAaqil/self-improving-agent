@@ -21,6 +21,8 @@ from app.config import (
 )
 
 MEMORY_COLLECTION = "agent_memory_v2"
+# Above this cosine similarity (task + error signature) two memories are the same memory
+DUPLICATE_SIMILARITY = 0.97
 
 
 class MemoryUnavailable(RuntimeError):
@@ -39,8 +41,11 @@ def _trim(text: str | None, limit: int) -> str:
 def error_signature(error: str | None) -> str:
     """Reduce a traceback to a stable 'ExceptionType: message' line with numbers masked."""
     lines = [ln.strip() for ln in (error or "").strip().splitlines() if ln.strip()]
-    candidates = [ln for ln in lines if re.match(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt)\b", ln)]
-    line = candidates[-1] if candidates else (lines[-1] if lines else "unknown failure")
+    # The exception can sit mid-line ("- test_x failed: urllib.error.URLError: ..."), so
+    # search rather than anchor, and drop the module path so the same error always matches.
+    pattern = re.compile(r"(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*(?:Error|Exception|Exit|Interrupt))\b(.*)")
+    found = [m for m in (pattern.search(ln) for ln in lines) if m]
+    line = (found[-1].group(1) + found[-1].group(2)) if found else (lines[-1] if lines else "unknown failure")
     return re.sub(r"\d+", "N", line)[:200]
 
 
@@ -79,23 +84,47 @@ def _add(kind: str, task: str, error: str, code: str = "", lesson: str = "",
     task = _trim(task, _FIELD_LIMITS["task"])
     error = _trim(error, _FIELD_LIMITS["error"])
     document = f"TASK: {task}\nERROR: {error_signature(error)}"
+    fields = {
+        "kind": kind,
+        "task": task,
+        "code": _trim(code, _FIELD_LIMITS["code"]),
+        "error": error,
+        "signature": error_signature(error),
+        "lesson": _trim(lesson, _FIELD_LIMITS["lesson"]),
+        "workspace": workspace,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    # The same task failing the same way again is the same memory, seen once more
+    twin = _find_duplicate(coll, document, kind, workspace)
+    if twin is not None:
+        twin_id, old = twin
+        coll.update(ids=[twin_id], metadatas=[{**old, **fields, "seen": int(old.get("seen", 1)) + 1}])
+        return twin_id
+
     coll.add(
         ids=[memory_id],
         documents=[document],
-        metadatas=[{
-            "kind": kind,
-            "task": task,
-            "code": _trim(code, _FIELD_LIMITS["code"]),
-            "error": error,
-            "signature": error_signature(error),
-            "lesson": _trim(lesson, _FIELD_LIMITS["lesson"]),
-            "workspace": workspace,
-            "uses": 0,
-            "pinned": False,
-            "timestamp": datetime.now().isoformat(),
-        }],
+        metadatas=[{**fields, "uses": 0, "seen": 1, "pinned": False}],
     )
     return memory_id
+
+
+def _find_duplicate(coll, document: str, kind: str, workspace: str) -> tuple[str, dict] | None:
+    try:
+        if not coll.count():
+            return None
+        res = coll.query(
+            query_texts=[document],
+            n_results=1,
+            where={"$and": [{"workspace": workspace}, {"kind": kind}]},
+            include=["metadatas", "distances"],
+        )
+        if res["ids"] and res["ids"][0] and 1.0 - res["distances"][0][0] >= DUPLICATE_SIMILARITY:
+            return res["ids"][0][0], dict(res["metadatas"][0][0])
+    except Exception:
+        pass  # deduplication is a nicety; never let it block remembering
+    return None
 
 
 def store_failure(task: str, code: str, error: str, collection=None, workspace: str = "default") -> str:

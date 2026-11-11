@@ -170,3 +170,34 @@ def test_merge_tests_never_shadows_an_existing_test():
     )
     assert merged.count("def test_a(") == 1 and "def test_a_strict(" in merged and "def test_b(" in merged
     compile(merged, "<tests>", "exec")
+
+
+def test_error_signature_finds_the_exception_inside_harness_feedback():
+    feedback = (
+        "Exit code: 1\nTests passed: 4/7\n"
+        "- test_fetch_status_success failed: urllib.error.URLError: <urlopen error [Errno -3] Temporary failure>"
+    )
+    assert error_signature(feedback).startswith("URLError: <urlopen error [Errno -N]")
+    # Still stable for a plain traceback, and for text with no exception at all
+    assert error_signature("Traceback...\nKeyError: 'id'") == "KeyError: 'id'"
+    assert error_signature("Tests passed: 0/3") == "Tests passed: N/N"
+
+
+def test_the_same_failure_twice_updates_one_memory_instead_of_adding_another():
+    from app.memory import store_failure
+
+    existing = {"kind": "failure", "task": "t", "workspace": "default", "uses": 3, "pinned": True, "seen": 1}
+    coll = MagicMock()
+    coll.count.return_value = 1
+    coll.query.return_value = {"ids": [["mem-1"]], "distances": [[0.01]], "metadatas": [[existing]]}
+
+    assert store_failure("t", "code v2", "ValueError: boom", collection=coll) == "mem-1"
+    coll.add.assert_not_called()
+    updated = coll.update.call_args.kwargs["metadatas"][0]
+    assert updated["seen"] == 2 and updated["uses"] == 3 and updated["pinned"] is True
+    assert updated["code"] == "code v2"          # the newest attempt replaces the old one
+
+    # A different failure (low similarity) is a new memory
+    coll.query.return_value = {"ids": [["mem-1"]], "distances": [[0.4]], "metadatas": [[existing]]}
+    assert store_failure("other", "c", "KeyError: x", collection=coll) != "mem-1"
+    coll.add.assert_called_once()
