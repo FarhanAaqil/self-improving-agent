@@ -61,6 +61,15 @@ class RunSpec:
         return any(n in self.skip_agents for n in names)
 
 
+def _reraise_if_outage(exc: Exception) -> None:
+    """
+    A rate limit or outage that outlived the retries is not the agent failing the task.
+    Letting it end the run as a tagged crash keeps it from being recorded as a verdict.
+    """
+    if llm.is_transient(exc):
+        raise exc
+
+
 class Emitter:
     def __init__(self, run_id: str):
         self.run_id = run_id
@@ -151,6 +160,7 @@ def _harden(spec: RunSpec, code: str, tests: str, v: Verification, emit: Emitter
     try:
         extra = strengthen_tests(spec.task, code, tests, report["survivors"], model_override=spec.model)
     except Exception as e:
+        _reraise_if_outage(e)
         logger.warning("Test strengthening failed: %s", e)
         extra = None
     if not extra:
@@ -174,6 +184,7 @@ def _harden(spec: RunSpec, code: str, tests: str, v: Verification, emit: Emitter
         try:
             diag = diagnose_failure(spec.task, code, recheck.feedback(), stricter, model_override=spec.model)
         except Exception as e:
+            _reraise_if_outage(e)
             logger.warning("Diagnosis of stricter tests failed: %s", e)
     if diag is None or diag["blame"] == "tests":
         emit("tests_strengthened", outcome="discarded", added=added,
@@ -259,7 +270,9 @@ def execute_run(run_id: str, spec: RunSpec) -> str:
         except Exception as e:
             logger.error("Run %s crashed: %s", run_id, e, exc_info=True)
             status = "failed"
-            emit("error", message="The pipeline hit an internal error. Check server logs.")
+            # `crash` marks infrastructure failures (rate limits, outages, bugs), as opposed to
+            # the agent honestly failing a task; evaluations must not score these as results
+            emit("error", message="The pipeline hit an internal error. Check server logs.", crash=type(e).__name__)
         db.update_run(
             run_id,
             final_status=status,
@@ -280,6 +293,7 @@ def _write_spec_tests(spec: RunSpec, emit: Emitter, feedback: str | None = None)
         try:
             tests = generate_spec_tests(spec.task, model_override=spec.model, feedback=feedback)
         except Exception as e:
+            _reraise_if_outage(e)
             logger.warning("Spec test generation failed: %s", e)
             continue
         if usable_tests(tests):
@@ -316,6 +330,7 @@ def _diagnose(spec: RunSpec, code: str, feedback: str, tests: str | None, attemp
     try:
         return diagnose_failure(spec.task, code, feedback, tests, model_override=spec.model)
     except Exception as e:
+        _reraise_if_outage(e)
         logger.warning("Diagnosis failed: %s", e)
         return None
 

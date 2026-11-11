@@ -96,6 +96,10 @@ def run_agent(problem: dict, model: str, condition: str, attempts: int) -> dict:
     db.insert_run(run_id, spec.task, final_status="queued")
     db.update_run(run_id, workspace=workspace)
     status = execute_run(run_id, spec)
+    crash = next((e["payload"]["crash"] for e in db.get_events(run_id) if e["type"] == "error" and e["payload"].get("crash")), None)
+    if crash:
+        # Not a verdict on the agent: raising keeps it out of the checkpoint, so a resume retries it
+        raise RuntimeError(f"pipeline crashed with {crash}")
     run = db.get_run_with_attempts(run_id) or {}
     tries = run.get("attempts", [])
     passing = next((a for a in tries if a.get("success")), None)

@@ -351,3 +351,25 @@ def test_an_empty_answer_from_the_model_is_a_failed_attempt_not_a_pass():
     assert data["final_status"] == "success"
     assert [a["success"] for a in data["attempts"]] == [False, True]
     assert data["attempts"][0]["generated_code"] == ""
+
+
+def test_infrastructure_crashes_are_tagged_so_evaluations_can_tell_them_apart():
+    class RateLimitError(Exception):
+        pass
+
+    with patch("app.pipeline.generate_spec_tests", side_effect=RateLimitError("429 tokens per day")):
+        data = client.post("/generate-and-repair", json={"task_description": "anything at all"}).json()
+    assert data["final_status"] == "failed"
+    with client.stream("GET", f"/runs/{data['run_id']}/events") as resp:
+        body = "".join(resp.iter_text())
+    assert '"crash": "RateLimitError"' in body
+
+
+def test_an_exhausted_rate_limit_during_diagnosis_is_a_crash_not_a_verdict():
+    class RateLimitError(Exception):
+        pass
+
+    with patch("app.pipeline.diagnose_failure", side_effect=RateLimitError("429")),          patch("app.pipeline.generate_code", return_value="def solve(): return 1"),          patch("app.pipeline.verify", return_value=failed()),          patch("app.pipeline.generate_spec_tests", return_value=SPEC_TESTS):
+        data = client.post("/generate-and-repair", json={"task_description": "Write solve() returning 42"}).json()
+    with client.stream("GET", f"/runs/{data['run_id']}/events") as resp:
+        assert '"crash": "RateLimitError"' in "".join(resp.iter_text())

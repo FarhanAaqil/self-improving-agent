@@ -93,6 +93,11 @@ class EmptyCompletion(RuntimeError):
 _TRANSIENT = ("RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError")
 
 
+def is_transient(exc: BaseException) -> bool:
+    """Rate limits, timeouts and server errors: the provider's problem, not the task's."""
+    return type(exc).__name__ in _TRANSIENT
+
+
 def _retry_after(exc: Exception) -> float | None:
     headers = getattr(getattr(exc, "response", None), "headers", None) or {}
     try:
@@ -111,7 +116,7 @@ def _create_with_retry(client: Any, **kwargs: Any) -> Any:
         try:
             return client.chat.completions.create(**kwargs)
         except Exception as exc:
-            if type(exc).__name__ not in _TRANSIENT or attempt == LLM_MAX_RETRIES:
+            if not is_transient(exc) or attempt == LLM_MAX_RETRIES:
                 raise
             wait = min(_retry_after(exc) or delay, LLM_MAX_WAIT_SECONDS)
             logger.info("LLM call hit %s; retrying in %.0fs (%d/%d)",
