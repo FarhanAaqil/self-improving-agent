@@ -11,7 +11,14 @@ from typing import Any
 
 from groq import Groq
 
-from app.config import FAKE_LLM, GROQ_API_KEY, LLM_MAX_RETRIES, LLM_MAX_WAIT_SECONDS, MODEL
+from app.config import (
+    FAKE_LLM,
+    GROQ_API_KEY,
+    LLM_MAX_OUTPUT_TOKENS,
+    LLM_MAX_RETRIES,
+    LLM_MAX_WAIT_SECONDS,
+    MODEL,
+)
 
 logger = logging.getLogger("self_improving_agent.llm")
 
@@ -79,6 +86,10 @@ def _record(response: Any) -> None:
     bucket["calls"] += 1
 
 
+class EmptyCompletion(RuntimeError):
+    """The model produced no usable text."""
+
+
 _TRANSIENT = ("RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError")
 
 
@@ -128,17 +139,29 @@ def chat(
             bucket["calls"] += 1
         return reply
 
-    response = _create_with_retry(
-        client or get_client(),
-        model=model or MODEL,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    _record(response)
-    text = response.choices[0].message.content or ""
-    # Reasoning models (Qwen3 and friends) may prepend their chain of thought
-    return _THINK_BLOCK.sub("", text).strip()
+    # Reasoning models can spend the whole budget thinking and return nothing, or stop
+    # mid-answer. Either way, ask again with more room before giving up.
+    budget = max_tokens
+    text = ""
+    while True:
+        response = _create_with_retry(
+            client or get_client(),
+            model=model or MODEL,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=budget,
+        )
+        _record(response)
+        choice = response.choices[0]
+        # Reasoning models (Qwen3 and friends) may prepend their chain of thought
+        text = _THINK_BLOCK.sub("", choice.message.content or "").strip()
+        cut_off = getattr(choice, "finish_reason", None) == "length"
+        if (text and not cut_off) or budget >= LLM_MAX_OUTPUT_TOKENS:
+            break
+        budget = min(budget * 2, LLM_MAX_OUTPUT_TOKENS)
+    if not text:
+        raise EmptyCompletion(f"The model returned no text even with {budget} output tokens.")
+    return text
 
 
 def clean_code(raw: str) -> str:

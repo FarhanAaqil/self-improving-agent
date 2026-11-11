@@ -109,3 +109,67 @@ def test_app_startup_takes_and_releases_the_instance_lock():
     probe = InstanceLock()
     probe.acquire()
     probe.release()
+
+
+def _reply(content, finish_reason="stop"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content), finish_reason=finish_reason)], usage=None
+    )
+
+
+def _client(replies, seen):
+    from types import SimpleNamespace
+
+    def create(**kwargs):
+        seen.append(kwargs["max_tokens"])
+        return replies.pop(0)
+
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+
+def test_empty_or_cut_off_answers_are_retried_with_more_room():
+    from app import llm
+
+    seen = []
+    client = _client([_reply("", "length"), _reply("def f(): pa", "length"), _reply("def f(): pass")], seen)
+    assert llm.chat([{"role": "user", "content": "x"}], max_tokens=500, client=client) == "def f(): pass"
+    assert seen == [500, 1000, 2000]
+
+
+def test_a_model_that_never_answers_raises_instead_of_returning_nothing():
+    import pytest
+
+    from app import llm
+
+    seen = []
+    client = _client([_reply("<think>hmm</think>", "length")] * 10, seen)
+    with pytest.raises(llm.EmptyCompletion):
+        llm.chat([{"role": "user", "content": "x"}], max_tokens=4096, client=client)
+    assert seen[-1] == llm.LLM_MAX_OUTPUT_TOKENS
+
+
+def test_spec_tests_must_parse_and_can_be_pruned_by_name():
+    from app.test_agent import drop_tests, usable_tests
+
+    good = "import math\n\ndef test_a():\n    assert 1\n\ndef test_b():\n    assert math.pi > 3\n"
+    assert usable_tests(good)
+    assert not usable_tests("def test_a(:\n    pass")       # cut off mid-line
+    assert not usable_tests("x = 1")                         # no tests at all
+    assert not usable_tests(None)
+    pruned = drop_tests(good, ["test_a"])
+    assert "test_a" not in pruned and "test_b" in pruned and "import math" in pruned
+
+
+def test_no_code_never_passes_verification():
+    from app.harness import verify
+
+    result = verify("   \n", "def test_x():\n    assert True\n")
+    assert result.success is False and "No code" in result.feedback()
+
+
+def test_diagnosis_lists_the_tests_it_blames():
+    blamed = _parse_diagnosis('{"blame": "tests", "wrong_tests": ["test_a", 7, "test_b"], "retry_confidence": 0.8}')
+    assert blamed["wrong_tests"] == ["test_a", "test_b"]
+    assert _parse_diagnosis('{"blame": "code"}')["wrong_tests"] == []

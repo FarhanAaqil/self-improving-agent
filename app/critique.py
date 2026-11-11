@@ -18,11 +18,13 @@ Reply with ONE JSON object and nothing else:
   "root_cause": "the precise technical cause",
   "fix_plan": "concrete instructions for the next attempt",
   "blame": "code" or "tests",
+  "wrong_tests": ["names of failing tests that contradict the task statement, if any"],
   "retry_confidence": number between 0 and 1
 }
 
 Rules:
-- blame is "tests" only when a test clearly contradicts the task statement.
+- blame is "tests" only when a test clearly contradicts the task statement. List exactly
+  those tests in wrong_tests; leave it empty when the code is at fault.
 - retry_confidence below 0.3 means the task is impossible or contradictory as written.
 - Never include code in the JSON values."""
 
@@ -113,6 +115,8 @@ def _parse_diagnosis(raw: str) -> dict:
         "root_cause": root_cause,
         "fix_plan": fix_plan,
         "blame": blame,
+        "wrong_tests": [str(t) for t in data.get("wrong_tests", []) if isinstance(t, str)][:20]
+        if isinstance(data.get("wrong_tests"), list) else [],
         "confidence": round(confidence, 2),
         "reasoning": summary + (f" Root cause: {root_cause}" if root_cause else ""),
         "raw": raw,

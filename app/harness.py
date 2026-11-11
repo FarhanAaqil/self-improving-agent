@@ -157,6 +157,9 @@ def build_driver(solution: str, tests: str | None, marker: str) -> str:
 
 def verify(solution: str, tests: str | None = None, timeout: int = SANDBOX_TIMEOUT) -> Verification:
     """Run the solution plus spec tests in the sandbox and parse the harness report."""
+    if not (solution or "").strip():
+        # An empty file exits cleanly, which must never count as passing
+        return Verification(False, None, "No code was produced.", -1, 0, True, solution_error="No code was produced.")
     marker = f"__AGENT_REPORT_{secrets.token_hex(8)}__"
     raw = run_code(build_driver(solution, tests, marker), timeout=timeout)
 
