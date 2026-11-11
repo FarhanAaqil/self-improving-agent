@@ -38,6 +38,8 @@ if MODEL not in AVAILABLE_MODELS:
 # Rate limits and blips are retried (honoring retry-after) instead of failing the run
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "6"))
 LLM_MAX_WAIT_SECONDS = float(os.getenv("LLM_MAX_WAIT_SECONDS", "60"))
+# An empty or cut-off answer is retried with double the room, up to this many output tokens
+LLM_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "8192"))
 
 # ── Agent runtime behavior ──────────────────────────────────
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))

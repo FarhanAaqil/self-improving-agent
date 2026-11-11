@@ -145,6 +145,7 @@ export interface MemoryItem {
   signature?: string
   lesson?: string
   uses?: number
+  seen?: number
   pinned?: boolean
   timestamp?: string
   similarity?: number

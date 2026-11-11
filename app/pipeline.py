@@ -29,7 +29,13 @@ from app.metrics import calculate_quality_metrics
 from app.observability import metrics
 from app.performance_agent import analyze_performance
 from app.static_analysis import bandit_scan, radon_complexity
-from app.test_agent import generate_spec_tests, merge_tests, strengthen_tests
+from app.test_agent import (
+    drop_tests,
+    generate_spec_tests,
+    merge_tests,
+    strengthen_tests,
+    usable_tests,
+)
 
 logger = logging.getLogger("self_improving_agent.pipeline")
 
@@ -151,6 +157,8 @@ def _harden(spec: RunSpec, code: str, tests: str, v: Verification, emit: Emitter
         return tests, v, report, None
 
     stricter = merge_tests(tests, extra)
+    if not usable_tests(stricter):
+        return tests, v, report, None
     added = extra.count("def test_")
     recheck = verify(code, stricter, timeout=SANDBOX_TIMEOUT)
     if recheck.success:
@@ -266,6 +274,52 @@ def execute_run(run_id: str, spec: RunSpec) -> str:
     return status
 
 
+def _write_spec_tests(spec: RunSpec, emit: Emitter, feedback: str | None = None) -> str | None:
+    """Spec tests that at least parse and contain a test, or None after two tries."""
+    for _ in range(2):
+        try:
+            tests = generate_spec_tests(spec.task, model_override=spec.model, feedback=feedback)
+        except Exception as e:
+            logger.warning("Spec test generation failed: %s", e)
+            continue
+        if usable_tests(tests):
+            return tests
+        feedback = "The previous answer was not valid Python test code. Return complete test functions only."
+    return None
+
+
+def _triage(spec: RunSpec, code: str, tests: str, v: Verification, diag: dict, emit: Emitter):
+    """
+    When the diagnosis says specific failing tests contradict the task, drop just those and
+    re-check the same code. Returns (tests, verification) on success, otherwise None.
+    A minority of tests at most: the diagnosis must not be able to wave everything through.
+    """
+    failing = {f["test"] for f in v.failures}
+    named = [t for t in diag.get("wrong_tests", []) if t in failing]
+    if not named or v.total < 2 or len(named) > v.total // 2:
+        return None
+    try:
+        pruned = drop_tests(tests, named)
+    except SyntaxError:
+        return None
+    if not usable_tests(pruned):
+        return None
+    recheck = verify(code, pruned, timeout=SANDBOX_TIMEOUT)
+    emit("tests_triaged", dropped=named, passed=recheck.success, reason=diag.get("root_cause", ""))
+    return (pruned, recheck) if recheck.success else None
+
+
+def _diagnose(spec: RunSpec, code: str, feedback: str, tests: str | None, attempt: int, emit: Emitter) -> dict | None:
+    if spec.skips("critique"):
+        return None
+    emit("diagnosing", attempt=attempt)
+    try:
+        return diagnose_failure(spec.task, code, feedback, tests, model_override=spec.model)
+    except Exception as e:
+        logger.warning("Diagnosis failed: %s", e)
+        return None
+
+
 def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
     db.update_run(run_id, final_status="running", model_name=spec.model)
     emit("run_started", task=spec.task, model=spec.model, max_attempts=spec.max_attempts)
@@ -276,46 +330,60 @@ def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
     tests: str | None = None
     if not spec.skips("test", "tests"):
         emit("tests_writing")
-        try:
-            tests = generate_spec_tests(spec.task, model_override=spec.model) or None
-        except Exception as e:
-            logger.warning("Spec test generation failed: %s", e)
-            tests = None
+        tests = _write_spec_tests(spec, emit)
         db.update_run(run_id, spec_tests=tests)
         emit("tests_ready", tests=tests, count=(tests or "").count("def test_"))
+        if tests is None:
+            # Without tests nothing can be verified, and a clean exit must not be stamped as proof
+            emit("error", message="I couldn't write usable spec tests for this task, so there is nothing to verify against.")
+            return "failed"
 
     feedback = diagnosis_text = previous_code = None
     first_error: str | None = None
     lesson: str | None = None
     test_rewrites = 0
-    hardened = False
+    hardened = triaged = False
     mutation: dict | None = None
 
     for attempt in range(1, spec.max_attempts + 1):
         db.update_run(run_id, total_attempts=attempt)
         emit("attempt_started", attempt=attempt)
 
-        code = generate_code(
-            task=spec.task,
-            error=feedback,
-            attempt=attempt,
-            memory_context=memory_context,
-            model=spec.model,
-            use_memory=False,  # recall already happened above, with events
-            previous_code=previous_code,
-            tests=tests,
-            diagnosis=diagnosis_text,
-        )
+        try:
+            code = generate_code(
+                task=spec.task,
+                error=feedback,
+                attempt=attempt,
+                memory_context=memory_context,
+                model=spec.model,
+                use_memory=False,  # recall already happened above, with events
+                previous_code=previous_code,
+                tests=tests,
+                diagnosis=diagnosis_text,
+            )
+        except llm.EmptyCompletion:
+            code = ""
         emit("code_generated", attempt=attempt, code=code)
 
         emit("sandbox_started", attempt=attempt)
         v = verify(code, tests, timeout=SANDBOX_TIMEOUT)
         emit("sandbox_result", attempt=attempt, **_verification_event(v))
 
-        ready_diag = None
+        diag = None
+        if not v.success:
+            diag = _diagnose(spec, code, v.feedback(), tests, attempt, emit)
+            # Tests that contradict the task are removed, and the same code gets a fair re-check
+            if diag and tests and diag["blame"] == "tests" and not triaged:
+                triaged = True
+                rescued = _triage(spec, code, tests, v, diag, emit)
+                if rescued:
+                    tests, v = rescued
+                    diag = None
+                    db.update_run(run_id, spec_tests=tests)
+
         if v.success and tests and not hardened and MUTATION_ENABLED and spec.strengthen and not spec.skips("mutation"):
             hardened = True  # one hardening round per run
-            tests, v, mutation, ready_diag = _harden(spec, code, tests, v, emit)
+            tests, v, mutation, diag = _harden(spec, code, tests, v, emit)
             db.update_run(run_id, spec_tests=tests)
 
         if v.success:
@@ -332,14 +400,6 @@ def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
         feedback = v.feedback()
         first_error = first_error or feedback
         previous_code = code
-
-        diag = ready_diag
-        if diag is None and not spec.skips("critique"):
-            emit("diagnosing", attempt=attempt)
-            try:
-                diag = diagnose_failure(spec.task, code, feedback, tests, model_override=spec.model)
-            except Exception as e:
-                logger.warning("Diagnosis failed: %s", e)
 
         db.insert_attempt(
             run_id=run_id, attempt_number=attempt, generated_code=code, model_name=spec.model,
@@ -364,12 +424,11 @@ def _execute(run_id: str, spec: RunSpec, emit: Emitter) -> str:
 
         if tests and diag["blame"] == "tests" and test_rewrites < MAX_TEST_REWRITES:
             test_rewrites += 1
-            try:
-                tests = generate_spec_tests(spec.task, model_override=spec.model, feedback=diag["root_cause"])
+            rewritten = _write_spec_tests(spec, emit, feedback=diag["root_cause"])
+            if rewritten:
+                tests = rewritten
                 db.update_run(run_id, spec_tests=tests)
                 emit("tests_rewritten", tests=tests, reason=diag["root_cause"])
-            except Exception as e:
-                logger.warning("Test rewrite failed: %s", e)
 
     _remember(spec, False, first_error, feedback, previous_code, None)
     return "max_retries_exceeded"

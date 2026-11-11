@@ -61,6 +61,12 @@ export function narrate(event: RunEvent): StoryLine | null {
       return { ...base, mood: 'thinking', text: 'Working out why…' }
     case 'diagnosis':
       return { ...base, mood: 'failure', text: str(p.summary), detail: str(p.fix_plan) ? `Plan: ${str(p.fix_plan)}` : undefined }
+    case 'tests_triaged': {
+      const dropped = Array.isArray(p.dropped) ? p.dropped.length : 0
+      return p.passed
+        ? { ...base, mood: 'success', text: `${dropped} of my tests contradicted the task, so I removed ${dropped === 1 ? 'it' : 'them'}. The code passes the rest.`, detail: str(p.reason) }
+        : { ...base, mood: 'neutral', text: 'I suspected some tests were wrong, but the code fails without them too.' }
+    }
     case 'tests_rewritten':
       return { ...base, mood: 'thinking', text: 'The tests themselves looked wrong, so I rewrote them.', detail: str(p.reason) }
     case 'early_stop':

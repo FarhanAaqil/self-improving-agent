@@ -89,6 +89,31 @@ def strengthen_tests(
     return extra if "def test_" in extra else None
 
 
+def usable_tests(tests: str | None) -> bool:
+    """Parseable Python with at least one test function. Parsing never runs the code."""
+    import ast
+
+    if not tests or "def test_" not in tests:
+        return False
+    try:
+        tree = ast.parse(tests)
+    except SyntaxError:
+        return False
+    return any(isinstance(n, ast.FunctionDef) and n.name.startswith("test_") for n in tree.body)
+
+
+def drop_tests(tests: str, names: list[str]) -> str:
+    """Remove the named top-level test functions and return the rest."""
+    import ast
+
+    tree = ast.parse(tests)
+    tree.body = [
+        node for node in tree.body
+        if not (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names)
+    ]
+    return ast.unparse(tree) + "\n"
+
+
 def merge_tests(tests: str, extra: str) -> str:
     """Append extra tests, renaming any whose name already exists so nothing is shadowed."""
     import re

@@ -282,3 +282,72 @@ def test_hardening_can_be_skipped():
     data, m = run_pipeline(["def solve(): return 42"], [passed()], skip=["mutation"])
     assert data["final_status"] == "success"
     m["mutation_test"].assert_not_called()
+
+
+THREE_TESTS = (
+    "def test_answer():\n    assert solve() == 42\n\n"
+    "def test_type():\n    assert isinstance(solve(), int)\n\n"
+    "def test_wrong_expectation():\n    assert solve() == 41\n"
+)
+
+
+def failing(names, total=3):
+    return Verification(
+        False, None, "AssertionError", 1, 12, True, total=total, passed=total - len(names),
+        failures=[{"test": n, "error": "AssertionError"} for n in names],
+    )
+
+
+def test_tests_that_contradict_the_task_are_dropped_and_the_same_code_is_rechecked():
+    blame_tests = {**diagnosis(blame="tests"), "wrong_tests": ["test_wrong_expectation"]}
+    data, m = run_pipeline(
+        ["def solve(): return 42"],
+        [failing(["test_wrong_expectation"]), passed(total=2)],
+        tests=THREE_TESTS, diag=blame_tests,
+    )
+    assert data["final_status"] == "success"
+    assert data["total_attempts"] == 1 and m["generate_code"].call_count == 1   # no wasted repair
+    assert "test_wrong_expectation" not in data["spec_tests"]
+    assert "test_answer" in data["spec_tests"] and "test_type" in data["spec_tests"]
+
+
+def test_triage_cannot_wave_most_of_the_tests_through():
+    blame_all = {**diagnosis(blame="tests"), "wrong_tests": ["test_answer", "test_type"]}
+    data, m = run_pipeline(
+        ["def solve(): return 0"] * 3,
+        [failing(["test_answer", "test_type"])] * 3,
+        tests=THREE_TESTS, diag=blame_all,
+    )
+    assert data["final_status"] == "max_retries_exceeded"
+    assert m["verify"].call_count == 3          # no pruned re-check ever happened
+
+
+def test_low_confidence_stops_early_only_after_triage_had_its_chance():
+    doubtful = {**diagnosis(blame="tests", confidence=0.1), "wrong_tests": ["test_wrong_expectation"]}
+    data, _ = run_pipeline(
+        ["def solve(): return 42"],
+        [failing(["test_wrong_expectation"]), passed(total=2)],
+        tests=THREE_TESTS, diag=doubtful,
+    )
+    assert data["final_status"] == "success"   # a correct solution is not thrown away
+
+
+def test_a_run_without_usable_spec_tests_is_never_stamped_verified():
+    data, m = run_pipeline(["def solve(): return 42"], [passed()], tests="def test_broken(:\n    pass")
+    assert data["final_status"] == "failed"
+    m["generate_code"].assert_not_called()
+    assert m["generate_spec_tests"].call_count == 2     # one retry, then give up honestly
+    with client.stream("GET", f"/runs/{data['run_id']}/events") as resp:
+        assert "usable spec tests" in "".join(resp.iter_text())
+
+
+def test_an_empty_answer_from_the_model_is_a_failed_attempt_not_a_pass():
+    from app.llm import EmptyCompletion
+
+    data, m = run_pipeline(
+        [EmptyCompletion("nothing"), "def solve(): return 42"],
+        [failed("No code was produced."), passed()],
+    )
+    assert data["final_status"] == "success"
+    assert [a["success"] for a in data["attempts"]] == [False, True]
+    assert data["attempts"][0]["generated_code"] == ""
