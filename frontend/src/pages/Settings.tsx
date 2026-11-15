@@ -117,8 +117,10 @@ export default function Settings() {
             }}
           >
             <p className="text-sm text-ink-secondary">
-              Runs started from this tab will use your key instead of the server's. It is sent with each request,
-              used only for that run, and never stored on the server.
+              {user?.needs_own_groq_key
+                ? 'Your plan runs on your own key, so add it here before your first run. '
+                : 'Runs started from this tab will use your key instead of the server’s. '}
+              It is sent with each request, used only for that run, and never stored on the server.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <label className="flex-1">

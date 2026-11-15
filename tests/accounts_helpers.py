@@ -37,6 +37,9 @@ def new_email() -> str:
     return f"user-{secrets.token_hex(4)}@example.com"
 
 
+OWN_GROQ_KEY = {"X-Groq-Key": "gsk_test_users_own_key"}
+
+
 class SignedIn:
     """A TestClient holding one user's session cookie and CSRF token."""
 

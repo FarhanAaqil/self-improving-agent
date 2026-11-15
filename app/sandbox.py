@@ -5,6 +5,7 @@ the container free of host paths and works when the API itself runs in a contain
 talking to a remote or proxied Docker daemon.
 """
 
+import contextvars
 import os
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 from app.config import (
     ALLOW_UNSAFE_HOST_SUBPROCESS,
@@ -31,6 +33,43 @@ _DOCKER_RETRY_TTL = 3.0
 _docker_state: dict = {"ok": False, "checked_at": 0.0}
 _docker_lock = threading.Lock()
 _slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENT_SANDBOXES))
+
+# Per-user cap on top of the global one: (workspace, limit) for whoever is running code now.
+# One user's burst waits for their own slots instead of filling every global slot.
+_owner: contextvars.ContextVar[tuple[str, int] | None] = contextvars.ContextVar("sandbox_owner", default=None)
+_owner_counts: dict[str, int] = {}
+_owner_cond = threading.Condition()
+
+
+@contextmanager
+def sandbox_owner(workspace: str, limit: int):
+    """Code run inside this block counts against `workspace`'s cap (0 = no per-user cap)."""
+    token = _owner.set((workspace, limit))
+    try:
+        yield
+    finally:
+        _owner.reset(token)
+
+
+@contextmanager
+def _owner_slot():
+    owner = _owner.get()
+    if not owner or owner[1] <= 0:
+        yield
+        return
+    workspace, limit = owner
+    with _owner_cond:
+        while _owner_counts.get(workspace, 0) >= limit:
+            _owner_cond.wait()
+        _owner_counts[workspace] = _owner_counts.get(workspace, 0) + 1
+    try:
+        yield
+    finally:
+        with _owner_cond:
+            _owner_counts[workspace] -= 1
+            if not _owner_counts[workspace]:
+                del _owner_counts[workspace]
+            _owner_cond.notify_all()
 
 
 def _is_docker_available() -> bool:
@@ -112,7 +151,8 @@ def run_code(code: str, timeout: int = SANDBOX_TIMEOUT) -> dict:
     is unavailable unless ALLOW_UNSAFE_HOST_SUBPROCESS is explicitly enabled.
     Both stdout and stderr are always returned; `success` is exit code 0.
     """
-    with _slots:
+    # The user's own slot first, so a user waiting on themselves never holds a global slot
+    with _owner_slot(), _slots:
         if _is_docker_available():
             return _record(_run_docker(code, timeout))
         if ALLOW_UNSAFE_HOST_SUBPROCESS:

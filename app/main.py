@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -46,7 +47,14 @@ from app.jobs import recover_interrupted_runs, submit_run
 from app.memory import MemoryUnavailable
 from app.observability import configure_logging, metrics, new_request_id, request_id
 from app.pipeline import RunSpec, execute_run
-from app.sandbox import SANDBOX_IMAGE, _is_docker_available, docker_run_args, run_code
+from app.plans import plan_for
+from app.sandbox import (
+    SANDBOX_IMAGE,
+    _is_docker_available,
+    docker_run_args,
+    run_code,
+    sandbox_owner,
+)
 from app.schemas import (
     CompareRequest,
     EvalResultOut,
@@ -64,6 +72,7 @@ from app.schemas import (
 from app.security import (
     auth_mode,
     groq_key_of,
+    identity_of,
     rate_limited,
     require_operator,
     verify_api_access,
@@ -255,6 +264,52 @@ def _load_run(run_id: str, request: Request | None = None) -> dict:
     return run
 
 
+@dataclass
+class RunAccess:
+    """Which Groq key a new run may use, and the caller's limits."""
+
+    groq_key: str | None
+    allow_server_key: bool
+    concurrency_limit: int
+    key_source: str  # "own" or "server"
+
+
+BYO_KEY_REQUIRED = (
+    "Free accounts run on your own Groq key, so add one in Settings first. It stays in this browser "
+    "and is sent only with your runs. Free keys come from console.groq.com."
+)
+
+
+def _run_access(request: Request) -> RunAccess:
+    """Decide how a new run is paid for, or refuse it. Free users never touch the server's key."""
+    identity = identity_of(request)
+    own_key = groq_key_of(request)
+    if identity.user is None:  # the operator (env key or local development)
+        _check_budget(request)
+        return RunAccess(own_key, True, 0, "own" if own_key else "server")
+    plan = plan_for(identity.user)
+    if own_key:
+        # Their key, and only their key: no silent fallback to ours if it fails
+        return RunAccess(own_key, False, plan.concurrent_runs, "own")
+    if not plan.server_key:
+        raise HTTPException(status_code=403, detail=BYO_KEY_REQUIRED)
+    spent = db.server_tokens_today(identity.workspace)
+    if spent >= plan.server_token_budget:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Today's token budget on our key is used up ({spent:,} of {plan.server_token_budget:,}). "
+                "Add your own Groq key in Settings to keep going, or wait until tomorrow."
+            ),
+        )
+    return RunAccess(None, True, plan.concurrent_runs, "server")
+
+
+def _sandbox_limit(request: Request) -> int:
+    identity = identity_of(request)
+    return plan_for(identity.user).concurrent_runs if identity.user else 0
+
+
 def _check_budget(request: Request) -> None:
     if DAILY_TOKEN_BUDGET <= 0:
         return
@@ -318,13 +373,14 @@ def sandbox_attacks():
     dependencies=[Depends(verify_api_access), Depends(rate_limited)],
     tags=["System"],
 )
-def sandbox_attack(name: str):
+def sandbox_attack(name: str, request: Request):
     """Run one of the curated adversarial scripts against the live sandbox."""
     from app.attacks import run_attack
 
     if not _is_docker_available():
         raise HTTPException(status_code=503, detail="Docker is not available on this server.")
-    result = run_attack(name)
+    with sandbox_owner(workspace_of(request), _sandbox_limit(request)):
+        result = run_attack(name)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Unknown attack '{name}'.")
     return result
@@ -341,17 +397,20 @@ def sandbox_attack(name: str):
 def generate_endpoint(req: GenerateRequest, request: Request):
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     model_name = req.model or MODEL
-    _check_budget(request)
+    access = _run_access(request)
 
     try:
-        with llm.groq_key(groq_key_of(request)):
+        with llm.groq_key(access.groq_key, allow_server_key=access.allow_server_key), llm.track_usage() as usage:
             code = generate_code(req.task_description, model=model_name)
     except Exception as e:
         logger.error("LLM generation failed: %s", e, exc_info=True)
         raise HTTPException(status_code=502, detail="The language model call failed. Try again shortly.")
 
     db.insert_run(run_id, req.task_description, final_status="generated", total_attempts=1)
-    db.update_run(run_id, model_name=model_name, workspace=workspace_of(request))
+    db.update_run(
+        run_id, model_name=model_name, workspace=workspace_of(request), key_source=access.key_source,
+        prompt_tokens=usage["prompt_tokens"], completion_tokens=usage["completion_tokens"],
+    )
     db.insert_attempt(run_id=run_id, attempt_number=1, generated_code=code, model_name=model_name, success=False)
     return GenerateOut(run_id=run_id, code=code, model=model_name)
 
@@ -391,7 +450,8 @@ def execute_endpoint(run_id: str, request: Request, req: Optional[ExecuteRequest
     else:
         raise HTTPException(status_code=422, detail="No code found in this run to execute.")
 
-    result = run_code(code_to_run, timeout=SANDBOX_TIMEOUT)
+    with sandbox_owner(workspace_of(request), _sandbox_limit(request)):
+        result = run_code(code_to_run, timeout=SANDBOX_TIMEOUT)
     db.insert_attempt(
         run_id=run_id,
         attempt_number=attempt_num,
@@ -421,21 +481,26 @@ def execute_endpoint(run_id: str, request: Request, req: Optional[ExecuteRequest
 
 # ── Full pipeline ────────────────────────────────────────────
 
-def _spec(req: GenerateAndRepairRequest, request: Request, model: str | None = None) -> RunSpec:
+def _spec(req: GenerateAndRepairRequest, request: Request, access: RunAccess, model: str | None = None) -> RunSpec:
     return RunSpec(
         task=req.task_description,
         model=model or req.model or MODEL,
         max_attempts=req.max_attempts,
         skip_agents=list(req.skip_agents),
         workspace=workspace_of(request),
-        groq_key=groq_key_of(request),
+        groq_key=access.groq_key,
+        allow_server_key=access.allow_server_key,
+        concurrency_limit=access.concurrency_limit,
     )
 
 
 def _new_run(spec: RunSpec, group_id: str | None = None) -> str:
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     db.insert_run(run_id, spec.task, final_status="queued")
-    db.update_run(run_id, model_name=spec.model, workspace=spec.workspace, group_id=group_id)
+    db.update_run(
+        run_id, model_name=spec.model, workspace=spec.workspace, group_id=group_id,
+        key_source="own" if spec.groq_key else "server",
+    )
     return run_id
 
 
@@ -447,8 +512,7 @@ def _new_run(spec: RunSpec, group_id: str | None = None) -> str:
 )
 def generate_and_repair_endpoint(req: GenerateAndRepairRequest, request: Request):
     """Synchronous version: blocks until the run finishes. Prefer POST /runs for UIs."""
-    _check_budget(request)
-    spec = _spec(req, request)
+    spec = _spec(req, request, _run_access(request))
     run_id = _new_run(spec)
     execute_run(run_id, spec)
     return _run_out(_load_run(run_id, request))
@@ -463,8 +527,7 @@ def generate_and_repair_endpoint(req: GenerateAndRepairRequest, request: Request
 )
 def create_run(req: GenerateAndRepairRequest, request: Request):
     """Start a run in the background and return immediately; follow it via /runs/{id}/events."""
-    _check_budget(request)
-    spec = _spec(req, request)
+    spec = _spec(req, request, _run_access(request))
     run_id = _new_run(spec)
     submit_run(run_id, spec)
     return RunAccepted(run_id=run_id, events_url=f"/runs/{run_id}/events")
@@ -478,11 +541,11 @@ def create_run(req: GenerateAndRepairRequest, request: Request):
 )
 def compare_models(req: CompareRequest, request: Request):
     """Run the same task on several models side by side; follow with GET /compare/{group_id}."""
-    _check_budget(request)
+    access = _run_access(request)
     group_id = f"cmp_{uuid.uuid4().hex[:8]}"
     runs = []
     for model in req.models:
-        spec = _spec(req, request, model=model)
+        spec = _spec(req, request, access, model=model)
         run_id = _new_run(spec, group_id=group_id)
         submit_run(run_id, spec)
         runs.append({"run_id": run_id, "model": model})
@@ -633,9 +696,14 @@ async def run_events(run_id: str, request: Request, after: int = Query(0, ge=0))
     tags=["Runs"],
 )
 def create_pull_request_endpoint(run_id: str, request: Request, repo: Optional[str] = None):
-    from app.github_agent import open_pull_request_for_run
+    from app.github_agent import github_access_for, open_pull_request_for_run
 
     _load_run(run_id, request)
+    if github_access_for(identity_of(request)) is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Opening pull requests isn't available for accounts yet. Download the code or share the run instead.",
+        )
     result = open_pull_request_for_run(run_id=run_id, repo=repo)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("error"))

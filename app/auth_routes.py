@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from app import accounts, config, mailer
+from app import accounts, config, mailer, plans
 from app.security import (
     auth_limiter,
     auth_mode,
@@ -53,6 +53,12 @@ class KeyRequest(BaseModel):
     name: str = Field("", max_length=60)
 
 
+def _github_configured() -> bool:
+    from app.github_agent import IS_GITHUB_CONFIGURED
+
+    return IS_GITHUB_CONFIGURED
+
+
 def _throttle(request: Request, email: str | None = None) -> None:
     auth_limiter.check("ip:" + client_ip(request))
     if email:
@@ -61,11 +67,16 @@ def _throttle(request: Request, email: str | None = None) -> None:
 
 def public_user(user: dict[str, Any]) -> dict[str, Any]:
     """What the browser may know about the signed-in account."""
+    plan = plans.plan_for(user)
     return {
         "user_id": user["user_id"],
         "email": user["email"],
         "email_verified": bool(user.get("email_verified_at")),
         "created_at": user.get("created_at"),
+        "plan": plan.public(),
+        "paid_until": user.get("paid_until") if plan.name != plans.DEFAULT_PLAN else None,
+        # Free plans can't use the server's Groq key: the UI asks for the user's own first
+        "needs_own_groq_key": not plan.server_key,
     }
 
 
@@ -111,6 +122,7 @@ def me(request: Request):
         "auth": auth_mode(),
         # Local development without keys is run by its operator
         "operator": session is None and auth_mode() == "open",
+        "can_open_prs": session is None and auth_mode() == "open" and _github_configured(),
         "signups_open": config.SIGNUPS_OPEN,
     }
 

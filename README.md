@@ -242,6 +242,16 @@ uvicorn app.main:app --reload --port 8000     # API (and the built UI, if presen
 npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload on :5173
 ```
 
+### Who pays for a run
+
+| Caller | Groq key used | Limits |
+|---|---|---|
+| Free account | **Their own only** (pasted in the browser, sent per run, never stored). Without one, runs are refused, and the LLM client itself refuses the server key for these runs | 1 run at a time, per-user rate limit |
+| Pro account | Their own if they send one, otherwise the server's within a daily token budget | 3 runs at a time |
+| Operator (`API_KEY`/`API_KEYS`, or local development) | The server's | `DAILY_TOKEN_BUDGET`, global caps |
+
+Plan numbers live in one file, [`app/plans.py`](app/plans.py). Runs queue fairly: workers take turns between users, so one person's burst never makes everyone else wait. Pull requests use the operator's `GITHUB_TOKEN`, so only the operator can open them (`github_access_for` in `app/github_agent.py` is the hook for per-user GitHub later).
+
 ### Configuration
 
 | Variable | Default | What it does |
@@ -259,7 +269,8 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 | `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
 | `ALLOW_BYO_GROQ_KEY` | `true` | Callers may send `X-Groq-Key`; used for that run only, never stored |
 | `DAILY_TOKEN_BUDGET` | `0` (off) | Per-workspace daily token cap; new runs get `429` once spent |
-| `RATE_LIMIT_PER_MINUTE` | `20` | Per-client limit on endpoints that spend tokens or sandbox time |
+| `RATE_LIMIT_PER_MINUTE` | `20` | Per-user limit (per address for anonymous callers) on endpoints that spend tokens or sandbox time |
+| `MAX_CONCURRENT_RUNS`, `MAX_CONCURRENT_SANDBOXES` | `3`, `4` | Global caps. Runs are shared out round-robin between users, and each user also has their plan's own cap |
 | `CERT_SIGNING_KEY` | — | HMAC-signs exported verification certificates |
 | `MEMORY_ENABLED` | `true` | Vector memory of failures and lessons |
 | `MUTATION_ENABLED` | `true` | Mutation-test passing code and write stricter tests for the gaps |
