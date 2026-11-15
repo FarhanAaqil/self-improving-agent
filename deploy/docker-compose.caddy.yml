@@ -1,0 +1,25 @@
+# Production on one VM: the app plus Caddy for the domain and TLS.
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.caddy.yml up -d --build
+# This app is single-instance by design: run exactly one of these stacks per data volume.
+services:
+  caddy:
+    image: caddy:2.8
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your domain name in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - default
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

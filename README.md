@@ -219,9 +219,11 @@ The API container runs as a non-root user and reaches Docker only through a sock
 
 ### Running it on a server
 
+The full guide, from a fresh VM to backups, restores, monitoring and upgrades, is **[docs/DEPLOY.md](docs/DEPLOY.md)**. In short:
+
 1. Copy `.env.example` to `.env` and set `APP_ENV=production`, a long random `API_KEY` and `GROQ_API_KEY`.
 2. `docker compose up -d --build`. The app listens on `127.0.0.1:8000`.
-3. Put a reverse proxy in front for the domain and TLS. With Caddy it is two lines:
+3. Put a reverse proxy in front for the domain and TLS (`deploy/docker-compose.caddy.yml` adds Caddy with automatic HTTPS). By hand, with Caddy it is two lines:
 
 ```
 your-domain.example {
@@ -285,6 +287,9 @@ Renewing early adds the days on top. When `paid_until` passes, the account is Fr
 | `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
 | `ALLOW_BYO_GROQ_KEY` | `true` | Callers may send `X-Groq-Key`; used for that run only, never stored |
 | `DAILY_TOKEN_BUDGET` | `0` (off) | Per-workspace daily token cap; new runs get `429` once spent |
+| `ADMIN_EMAILS` | — | Accounts that get the admin page: users, plans, usage, the disable switch and backups |
+| `BACKUP_DIR`, `BACKUP_EVERY_HOURS`, `BACKUP_KEEP` | —, `24`, `14` | Hot backups of the database and memory, restore-tested with `python -m app.backup verify` |
+| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`, `RELEASE` | — | Optional error tracking, scrubbed of keys, cookies, bodies and code |
 | `DEMO_ENABLED`, `DEMO_RUNS_PER_10_MIN`, `DEMO_CONCURRENCY` | `true`, `5`, `2` | The public live demo on the landing page |
 | `PAYMENT_LINK_URL` | — | Where the Upgrade button goes. `{user_id}` and `{email}` are filled in |
 | `MAINTENANCE_INTERVAL_HOURS` | `6` | How often lapsed plans are expired and old history is deleted |
@@ -319,6 +324,7 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside local dev
 | `POST` | `/demo/run` · `GET /demo/runs/{id}/events` | Public live demo: start one and stream it |
 | `GET` | `/account/usage`, `/plans` | Your plan, limits and today's usage; the public plan list |
 | `POST` | `/admin/users/{id}/plan` · `GET /admin/users/lookup` | Operator only: put an account on a plan until a date; find an account by email |
+| `GET`/`POST` | `/admin/users`, `/admin/users/{id}/active`, `/admin/backup`, `/admin/backups` | Operator only: every account with plan and usage, the disable switch, back up now |
 | `POST` | `/runs` | Start the full loop in the background (202, returns `run_id`) |
 | `GET` | `/runs/{id}/events` | Server-sent events for every step, resumable with `Last-Event-ID` |
 | `GET` | `/runs`, `/runs/{id}` | Paginated summaries (`page`, `q`, `status`) and full run detail |

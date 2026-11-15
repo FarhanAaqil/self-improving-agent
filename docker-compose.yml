@@ -77,6 +77,16 @@ services:
       - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
       - MAIL_FROM=${MAIL_FROM:-}
       - PAYMENT_LINK_URL=${PAYMENT_LINK_URL:-}
+      # Production
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - BACKUP_DIR=${BACKUP_DIR:-/data/backups}
+      - BACKUP_EVERY_HOURS=${BACKUP_EVERY_HOURS:-24}
+      - BACKUP_KEEP=${BACKUP_KEEP:-14}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - RELEASE=${RELEASE:-}
+      # Only the reverse proxy (or this machine) can reach the app, so its
+      # X-Forwarded-For is trusted: rate limits then see real visitor addresses
+      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-*}
     volumes:
       - agent_data:/data
     networks:

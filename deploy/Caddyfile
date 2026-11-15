@@ -1,0 +1,14 @@
+# Caddy in front of the app: a real domain with automatic HTTPS (Let's Encrypt).
+# Set DOMAIN in .env, point the domain's DNS A/AAAA record at this machine, open ports 80 and 443.
+{$DOMAIN} {
+	# Live run events are a stream; pass every byte through immediately
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
+
+	# The app sets its own security headers (CSP, HSTS over HTTPS, nosniff, frame denial)
+	log {
+		output stdout
+		format json
+	}
+}
