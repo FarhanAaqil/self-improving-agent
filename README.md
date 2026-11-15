@@ -298,7 +298,7 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside local dev
 | `GET` | `/stats/improvement`, `/usage` | Daily first-try/solve rates, memory effect, today's token use |
 | `GET`/`POST` | `/sandbox/attacks`, `/sandbox/attacks/{name}` | List and launch the curated attacks |
 | `POST` | `/runs/{id}/pr` | Open a GitHub PR for a verified run (allowlisted repos only) |
-| `GET`/`POST` | `/eval/latest`, `/eval/history`, `/eval/run`, `/eval/status/{id}` | Simple benchmark |
+| `GET`/`POST` | `/eval/latest`, `/eval/history`, `/eval/run`, `/eval/status/{id}` | Simple benchmark (starting one is operator-only: it spends the server's key) |
 | `GET` | `/eval/agent` | Real-pipeline benchmark results (correct vs. stamped verified, per setup) |
 | `POST` | `/generate`, `/execute/{id}` | Generate only, or re-execute an attempt |
 | `GET` | `/metrics` | Prometheus counters (requests, runs, sandbox outcomes, tokens) |
@@ -310,6 +310,7 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside local dev
 | Layer | What runs | Where |
 |---|---|---|
 | Backend | 110+ pytest tests: pipeline, harness, mutation testing, metrics, memory, auth and workspaces, certificates, sharing, benchmark statistics, API/type drift | `pytest -m "not integration"` (coverage gate 75%) |
+| Isolation | Two real signed-in users against every route that reads or writes user data (runs, events, compare, certificates, share links, memory list/search/delete/pin, usage, stats, keys). User B never sees or changes user A's data, and share links expose only the shared run | `tests/test_isolation.py` |
 | Sandbox | 8 real attacks against a live Docker daemon, plus the attack API | part of the backend suite |
 | Frontend | SSE parser, LCS diff, highlighter, narration and stepper | `npm --prefix frontend test` |
 | End-to-end | Playwright drives the real UI against the real sandbox in offline demo mode: a run fails, gets diagnosed, repaired and verified; share links; attacks; theme and command palette | `cd e2e && npx playwright test` |

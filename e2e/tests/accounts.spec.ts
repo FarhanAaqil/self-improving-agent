@@ -8,7 +8,9 @@ const OUTBOX = process.env.MAIL_OUTBOX_DIR
 
 async function linkMailedTo(email: string, path: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
-    for (const name of readdirSync(OUTBOX!).sort().reverse()) {
+    // The folder appears with the first email, which is sent in the background
+    const names = (() => { try { return readdirSync(OUTBOX!) } catch { return [] } })()
+    for (const name of names.sort().reverse()) {
       const mail = JSON.parse(readFileSync(join(OUTBOX!, name), 'utf-8'))
       const match = mail.to === email && mail.body.match(new RegExp(`${path}\\?token=[\\w-]+`))
       if (match) return match[0]

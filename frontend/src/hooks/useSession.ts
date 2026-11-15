@@ -10,6 +10,7 @@ export function useSession() {
     user: me?.user ?? null,
     mode: me?.auth,
     signupsOpen: me?.signups_open ?? true,
+    isOperator: Boolean(me?.operator),
     // Accounts are required and nobody is signed in
     needsLogin: me?.auth === 'accounts' && !me.user,
   }
