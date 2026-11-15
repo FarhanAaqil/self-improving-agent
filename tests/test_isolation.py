@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from app import config, db, memory
 from app.main import app
-from tests.accounts_helpers import SignedIn, new_email
+from tests.accounts_helpers import OWN_GROQ_KEY, SignedIn, new_email
 
 TASK = "Write add(a, b) returning the sum"
 
@@ -148,7 +148,7 @@ def test_cannot_open_a_pull_request_from_someone_elses_run(alice, bob):
 
 def test_new_runs_land_in_the_callers_workspace(alice, bob):
     with patch("app.main.submit_run"):
-        run_id = bob.post("/runs", json={"task_description": TASK}).json()["run_id"]
+        run_id = bob.post("/runs", headers=OWN_GROQ_KEY, json={"task_description": TASK}).json()["run_id"]
     assert db.run_workspace(run_id) == bob.workspace
     assert alice.get(f"/runs/{run_id}").status_code == 404
 
@@ -163,7 +163,10 @@ def test_comparisons_are_private(alice, bob):
 def test_a_user_cannot_join_someone_elses_comparison_group(alice, bob):
     owned_run(alice, "run_iso_grp", group_id="cmp_iso_2")
     with patch("app.main.submit_run"):
-        resp = bob.post("/compare", json={"task_description": TASK, "models": ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"]})
+        resp = bob.post(
+            "/compare", headers=OWN_GROQ_KEY,
+            json={"task_description": TASK, "models": ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"]},
+        )
     assert resp.json()["group_id"] != "cmp_iso_2"
     assert len(alice.get("/compare/cmp_iso_2").json()["runs"]) == 1
 

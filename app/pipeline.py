@@ -28,6 +28,7 @@ from app.harness import Verification, mutation_test, verify
 from app.metrics import calculate_quality_metrics
 from app.observability import metrics
 from app.performance_agent import analyze_performance
+from app.sandbox import sandbox_owner
 from app.static_analysis import bandit_scan, radon_complexity
 from app.test_agent import (
     drop_tests,
@@ -52,6 +53,10 @@ class RunSpec:
     workspace: str = "default"
     # A caller's own Groq key: used for this run only, never stored or printed
     groq_key: str | None = field(default=None, repr=False)
+    # Free accounts: the server's key must never be used for this run
+    allow_server_key: bool = True
+    # How many of this workspace's runs may work at once (0 = only the global cap)
+    concurrency_limit: int = 0
     # Benchmarks turn these off to measure one thing at a time
     review: bool = True
     strengthen: bool = True
@@ -66,7 +71,7 @@ def _reraise_if_outage(exc: Exception) -> None:
     A rate limit or outage that outlived the retries is not the agent failing the task.
     Letting it end the run as a tagged crash keeps it from being recorded as a verdict.
     """
-    if llm.is_transient(exc):
+    if llm.is_transient(exc) or isinstance(exc, llm.ServerKeyNotAllowed):
         raise exc
 
 
@@ -264,7 +269,11 @@ def _review(spec: RunSpec, run_id: str, attempt_id: int, code: str, tests: str |
 def execute_run(run_id: str, spec: RunSpec) -> str:
     """Run the full pipeline for an existing `runs` row. Returns the final status."""
     emit = Emitter(run_id)
-    with llm.groq_key(spec.groq_key), llm.track_usage() as usage:
+    with (
+        llm.groq_key(spec.groq_key, allow_server_key=spec.allow_server_key),
+        sandbox_owner(spec.workspace, spec.concurrency_limit),
+        llm.track_usage() as usage,
+    ):
         try:
             status = _execute(run_id, spec, emit)
         except Exception as e:

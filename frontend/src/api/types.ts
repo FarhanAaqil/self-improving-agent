@@ -237,11 +237,25 @@ export interface HealthResponse {
   default_model?: string
 }
 
+export interface Plan {
+  name: string
+  label: string
+  price: string
+  runs_per_day: number
+  concurrent_runs: number
+  history_days: number
+  server_key: boolean
+  server_token_budget: number
+}
+
 export interface AccountUser {
   user_id: string
   email: string
   email_verified: boolean
   created_at?: string
+  plan: Plan
+  paid_until: string | null
+  needs_own_groq_key: boolean
 }
 
 export interface Me {
@@ -250,6 +264,7 @@ export interface Me {
   auth: 'open' | 'accounts'
   signups_open: boolean
   operator?: boolean
+  can_open_prs?: boolean
 }
 
 export interface ApiKeyRecord {

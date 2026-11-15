@@ -32,10 +32,20 @@ _clients_lock = threading.Lock()
 _usage: contextvars.ContextVar[dict | None] = contextvars.ContextVar("llm_usage", default=None)
 # Bring-your-own Groq key for the current request, if the caller supplied one.
 _request_key: contextvars.ContextVar[str | None] = contextvars.ContextVar("groq_key", default=None)
+# False for callers who must pay with their own key (free accounts): the server's key is
+# then unreachable from this context, even if some code path forgets to pass a key.
+_server_key_allowed: contextvars.ContextVar[bool] = contextvars.ContextVar("server_key_allowed", default=True)
+
+
+class ServerKeyNotAllowed(PermissionError):
+    """This caller must use their own Groq key, and none was given."""
 
 
 def get_client(api_key: str | None = None) -> Groq:
-    key = api_key or _request_key.get() or GROQ_API_KEY or ""
+    own = api_key or _request_key.get()
+    if not own and not _server_key_allowed.get():
+        raise ServerKeyNotAllowed("This run must use the caller's own Groq key, and none was provided.")
+    key = own or GROQ_API_KEY or ""
     with _clients_lock:
         if key not in _clients:
             # Bring-your-own keys would otherwise pile up forever; keep the most recent few
@@ -57,11 +67,13 @@ def track_usage():
 
 
 @contextmanager
-def groq_key(api_key: str | None):
+def groq_key(api_key: str | None, allow_server_key: bool = True):
     token = _request_key.set(api_key)
+    allowed = _server_key_allowed.set(allow_server_key)
     try:
         yield
     finally:
+        _server_key_allowed.reset(allowed)
         _request_key.reset(token)
 
 

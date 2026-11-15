@@ -122,7 +122,10 @@ def init_tables(conn: sqlite3.Connection) -> None:
 
 
 # Added by later phases; old databases converge on the same shape
-USER_COLUMNS: dict[str, str] = {}
+USER_COLUMNS: dict[str, str] = {
+    "plan": "TEXT DEFAULT 'free'",
+    "paid_until": "TIMESTAMP",
+}
 
 
 # ── Users ───────────────────────────────────────────────────

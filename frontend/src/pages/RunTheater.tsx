@@ -23,7 +23,7 @@ import QualityRadar from '../components/QualityRadar'
 import Stepper from '../components/Stepper'
 import { Chip, EmptyState, ErrorNote, Meter, Panel, Skeleton, StatusPill } from '../components/ui'
 import VerifiedStamp from '../components/VerifiedStamp'
-import { useHealth } from '../hooks/useHealth'
+import { useSession } from '../hooks/useSession'
 import { useRunStream } from '../hooks/useRunStream'
 import { compactNumber, duration, pct, relativeTime, score10 } from '../lib/format'
 import { deriveStages, narrate, type Mood } from '../lib/narrate'
@@ -62,7 +62,7 @@ function liveAttempts(events: RunEvent[]) {
 export default function RunTheater() {
   const { runId } = useParams<{ runId: string }>()
   const navigate = useNavigate()
-  const { data: health } = useHealth()
+  const { canOpenPrs } = useSession()
   const stream = useRunStream(runId)
 
   const { data: run, isLoading, error, refetch } = useQuery({
@@ -402,7 +402,7 @@ export default function RunTheater() {
                 <button type="button" onClick={toggleShare} className="btn-secondary" aria-pressed={Boolean(share)}>
                   <Link2 className="h-3.5 w-3.5" aria-hidden /> {share ? 'stop sharing' : 'share link'}
                 </button>
-                {health?.github_configured && (
+                {canOpenPrs && (
                   <button
                     type="button"
                     disabled={prBusy}

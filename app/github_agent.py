@@ -24,6 +24,19 @@ IS_GITHUB_CONFIGURED: bool = bool(
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
+def github_access_for(identity: Any) -> str | None:
+    """Which GitHub token may open pull requests for this caller, or None.
+
+    The operator's GITHUB_TOKEN writes to the operator's repos, so in a public build it is
+    only for the operator. Extension point: when accounts can connect their own GitHub (an
+    OAuth app or a GitHub App installation), look up and return that user's token here, and
+    pass it through to open_pull_request_for_run instead of the operator's.
+    """
+    if getattr(identity, "is_operator", False):
+        return GITHUB_TOKEN or ""  # empty: the operator hasn't configured GitHub (a no-op "skipped")
+    return None
+
+
 def _error(message: str) -> dict[str, Any]:
     return {"status": "error", "error": message, "pr_url": None}
 

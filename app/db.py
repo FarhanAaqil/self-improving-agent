@@ -177,6 +177,8 @@ RUN_COLUMNS = {
     "workspace": "TEXT DEFAULT 'default'",
     "group_id": "TEXT",
     "share_token": "TEXT",
+    # "own" (the caller's Groq key) or "server" (ours); server-key tokens count against budgets
+    "key_source": "TEXT",
 }
 
 
@@ -569,6 +571,29 @@ def run_stats_by_day(days: int = 60, workspace: str | None = None, db_path: str 
 
 
 # ── Workspaces, usage, sharing, compare groups ───────────────
+
+def server_tokens_today(workspace: str, db_path: str = DB_PATH) -> int:
+    """Tokens spent today by this workspace's runs that used the server's Groq key."""
+    today = datetime.now().date().isoformat()
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0)
+               FROM runs WHERE substr(created_at, 1, 10) = ? AND COALESCE(workspace, 'default') = ?
+               AND key_source = 'server'""",
+            (today, workspace),
+        ).fetchone()
+    return int(row[0])
+
+
+def runs_started_today(workspace: str, db_path: str = DB_PATH) -> int:
+    today = datetime.now().date().isoformat()
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE substr(created_at, 1, 10) = ? AND COALESCE(workspace, 'default') = ?",
+            (today, workspace),
+        ).fetchone()
+    return int(row[0])
+
 
 def tokens_today(workspace: str | None = None, db_path: str = DB_PATH) -> int:
     """Tokens spent by runs created today (UTC date of created_at), optionally per workspace."""

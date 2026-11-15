@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app import accounts, config, db
 from app.main import app
 from app.security import RateLimiter
-from tests.accounts_helpers import SignedIn, install_outbox, new_email
+from tests.accounts_helpers import OWN_GROQ_KEY, SignedIn, install_outbox, new_email
 
 PASSWORD = "correct horse battery"
 
@@ -125,9 +125,9 @@ def test_session_cookie_is_httponly_and_strict():
 def test_writes_need_the_csrf_token(accounts_mode):
     user = SignedIn(new_email())
     with patch("app.main.submit_run"):
-        no_token = user.client.post("/runs", json={"task_description": "Write solve() returning 42"})
+        no_token = user.client.post("/runs", headers=OWN_GROQ_KEY, json={"task_description": "Write solve() returning 42"})
         assert no_token.status_code == 403
-        ok = user.post("/runs", json={"task_description": "Write solve() returning 42"})
+        ok = user.post("/runs", headers=OWN_GROQ_KEY, json={"task_description": "Write solve() returning 42"})
     assert ok.status_code == 202
     assert db.run_workspace(ok.json()["run_id"]) == user.workspace
     assert user.client.get("/runs").status_code == 200  # reads don't need it
@@ -179,7 +179,9 @@ def test_api_keys_are_shown_once_stored_hashed_and_revocable(accounts_mode):
     assert script.get("/runs", headers={"Authorization": f"Bearer {secret}"}).status_code == 200
     # A key works without CSRF (it isn't a browser cookie) and lands in the owner's workspace
     with patch("app.main.submit_run"):
-        run = script.post("/runs", headers={"X-API-Key": secret}, json={"task_description": "Write solve() returning 42"})
+        run = script.post(
+            "/runs", headers={"X-API-Key": secret, **OWN_GROQ_KEY}, json={"task_description": "Write solve() returning 42"}
+        )
     assert db.run_workspace(run.json()["run_id"]) == user.workspace
 
     assert user.delete(f"/account/keys/{record['key_id']}").status_code == 200

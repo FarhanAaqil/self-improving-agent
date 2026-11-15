@@ -2,10 +2,12 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowRight, Brain, FlaskConical, Play, ShieldCheck, Sliders, Swords, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { listRuns, searchMemory, startComparison, startRun } from '../api/client'
+import { getStoredGroqKey, listRuns, searchMemory, startComparison, startRun } from '../api/client'
+import GroqKeyCallout from '../components/GroqKeyCallout'
 import { ErrorNote, Kbd, PageHeader, StatusPill } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences } from '../hooks/usePreferences'
+import { useSession } from '../hooks/useSession'
 import { relativeTime } from '../lib/format'
 
 const TEMPLATES = [
@@ -88,6 +90,10 @@ export default function Workbench() {
   const { data: recent } = useQuery({ queryKey: ['runs-recent'], queryFn: () => listRuns({ pageSize: 5 }) })
 
   const racing = race.length >= 2
+  const { user } = useSession()
+  const [hasGroqKey, setHasGroqKey] = useState(() => Boolean(getStoredGroqKey()))
+  // Free accounts pay with their own Groq key; nothing can run until it's in this tab
+  const keyMissing = Boolean(user?.needs_own_groq_key) && !hasGroqKey
   const run = useMutation({
     mutationFn: async () => {
       const base = { task_description: task.trim(), max_attempts: attempts, skip_agents: skip }
@@ -101,7 +107,7 @@ export default function Workbench() {
     onSuccess: (to) => navigate(to),
   })
 
-  const ready = task.trim().length >= 5 && !run.isPending
+  const ready = task.trim().length >= 5 && !run.isPending && !keyMissing
   const submit = () => ready && run.mutate()
 
   return (
@@ -111,6 +117,8 @@ export default function Workbench() {
         title="What should I build?"
         lede="Describe a Python task. I write spec tests first, then code that has to pass them inside a locked container, and I fix my own mistakes until it does."
       />
+
+      {keyMissing && <GroqKeyCallout onSaved={() => setHasGroqKey(true)} />}
 
       <section className="panel shadow-ledger">
         <label htmlFor="task" className="sr-only">Task description</label>

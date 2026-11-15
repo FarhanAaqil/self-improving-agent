@@ -11,6 +11,8 @@ export function useSession() {
     mode: me?.auth,
     signupsOpen: me?.signups_open ?? true,
     isOperator: Boolean(me?.operator),
+    // Pull requests use the operator's GitHub token, so only the operator sees the button
+    canOpenPrs: Boolean(me?.can_open_prs),
     // Accounts are required and nobody is signed in
     needsLogin: me?.auth === 'accounts' && !me.user,
   }
