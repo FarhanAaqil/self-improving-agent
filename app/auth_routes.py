@@ -109,6 +109,8 @@ def me(request: Request):
         "user": public_user(session[0]) if session else None,
         "csrf_token": session[1] if session else None,
         "auth": auth_mode(),
+        # Local development without keys is run by its operator
+        "operator": session is None and auth_mode() == "open",
         "signups_open": config.SIGNUPS_OPEN,
     }
 

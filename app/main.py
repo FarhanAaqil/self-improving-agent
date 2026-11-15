@@ -61,7 +61,14 @@ from app.schemas import (
     RunOut,
     RunPage,
 )
-from app.security import auth_mode, groq_key_of, rate_limited, verify_api_access, workspace_of
+from app.security import (
+    auth_mode,
+    groq_key_of,
+    rate_limited,
+    require_operator,
+    verify_api_access,
+    workspace_of,
+)
 from app.single_instance import InstanceLock
 from app.startup import enforce_safe_startup
 
@@ -713,7 +720,12 @@ def improvement(request: Request, days: int = Query(60, ge=7, le=365)):
     return {"daily": daily, "memory_effect": db.memory_effect(workspace=ws)}
 
 
-@app.get("/metrics", dependencies=[Depends(verify_api_access)], tags=["Insight"], include_in_schema=False)
+@app.get(
+    "/metrics",
+    dependencies=[Depends(verify_api_access), Depends(require_operator)],
+    tags=["Insight"],
+    include_in_schema=False,
+)
 def prometheus_metrics():
     return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
@@ -876,7 +888,8 @@ def _run_eval_job(eval_id: str, benchmark: str, subset_size: int):
 @app.post(
     "/eval/run",
     response_model=EvalRunOut,
-    dependencies=[Depends(verify_api_access), Depends(rate_limited)],
+    # Benchmarks spend the server's own Groq key and publish results for everyone
+    dependencies=[Depends(verify_api_access), Depends(require_operator), Depends(rate_limited)],
     tags=["Evaluation"],
 )
 def run_eval_endpoint(req: EvalRunRequest):

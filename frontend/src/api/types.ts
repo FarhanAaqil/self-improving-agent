@@ -249,6 +249,7 @@ export interface Me {
   csrf_token: string | null
   auth: 'open' | 'accounts'
   signups_open: boolean
+  operator?: boolean
 }
 
 export interface ApiKeyRecord {

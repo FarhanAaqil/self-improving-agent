@@ -4,6 +4,7 @@ import { lazy, Suspense, useState } from 'react'
 import { getAgentBenchmarks, getEvalHistory, getEvalStatus, getLatestEval, triggerEval } from '../api/client'
 import type { BenchmarkResult } from '../api/types'
 import AgentBenchmarkPanel from '../components/AgentBenchmarkPanel'
+import { useSession } from '../hooks/useSession'
 
 // The charts library is ~300KB; only fetch it when there is a history worth drawing
 const BenchmarkHistoryChart = lazy(() => import('../components/BenchmarkHistoryChart'))
@@ -67,6 +68,7 @@ function ProblemGrid({ result }: { result: BenchmarkResult }) {
 export default function Benchmarks() {
   const [evalId, setEvalId] = useState<string | null>(null)
   const [size, setSize] = useState(10)
+  const { isOperator } = useSession()
 
   const latest = useQuery({ queryKey: ['eval-latest'], queryFn: getLatestEval })
   // Same query the panel uses (shared cache): wait for both so panels don't push each other down
@@ -95,7 +97,7 @@ export default function Benchmarks() {
         title="Measured, not claimed"
         lede="Official HumanEval problems with their original hidden tests, run in the sandbox. After a failure I only hear the error type, never the test, so I can't learn the answers."
         actions={
-          <div className="flex items-center gap-2">
+          isOperator && <div className="flex items-center gap-2">
             <label className="font-mono text-[11px] text-ink-muted">
               <span className="sr-only">Problems</span>
               <select value={size} onChange={(e) => setSize(Number(e.target.value))} className="input w-auto py-1.5 text-xs">
