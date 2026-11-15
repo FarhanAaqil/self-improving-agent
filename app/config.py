@@ -94,6 +94,8 @@ ALLOW_UNSAFE_HOST_SUBPROCESS = _flag("ALLOW_UNSAFE_HOST_SUBPROCESS")
 ALLOW_CODE_OVERRIDE = _flag("ALLOW_CODE_OVERRIDE")
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
 MAX_CONCURRENT_SANDBOXES = int(os.getenv("MAX_CONCURRENT_SANDBOXES", "4"))
+# How long a production server waits at boot for Docker (or the socket proxy) to answer
+DOCKER_STARTUP_WAIT_SECONDS = float(os.getenv("DOCKER_STARTUP_WAIT_SECONDS", "30"))
 MAX_OUTPUT_CHARS = int(os.getenv("MAX_OUTPUT_CHARS", "65536"))
 ALLOWED_ORIGINS = _csv(
     "ALLOWED_ORIGINS",

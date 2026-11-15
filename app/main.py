@@ -62,6 +62,7 @@ from app.schemas import (
 )
 from app.security import auth_mode, groq_key_of, rate_limited, verify_api_access, workspace_of
 from app.single_instance import InstanceLock
+from app.startup import enforce_safe_startup
 
 logger = logging.getLogger("self_improving_agent")
 configure_logging()
@@ -75,6 +76,8 @@ db.init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # In production, an unsafe setting or a missing sandbox stops the server here
+    enforce_safe_startup(_is_docker_available)
     # Fails fast with a clear message if another process already owns this data directory
     lock = InstanceLock()
     lock.acquire()

@@ -49,12 +49,15 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - docker-proxy
+    # Only this machine can reach the app. Put a reverse proxy (Caddy, nginx) in front
+    # for TLS and a domain; see README "Running it on a server".
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - DOCKER_HOST=tcp://docker-proxy:2375
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - APP_ENV=${APP_ENV:-development}
+      # Fails closed: without an .env this is production, which needs API_KEY to answer
+      - APP_ENV=${APP_ENV:-production}
       - API_KEY=${API_KEY:-}
       - API_KEYS=${API_KEYS:-}
       - FAKE_LLM=${FAKE_LLM:-false}
