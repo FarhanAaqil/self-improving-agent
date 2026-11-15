@@ -2,6 +2,7 @@ import { Monitor, Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { getStoredGroqKey, setStoredGroqKey } from '../api/client'
 import { ApiKeysPanel, ProfilePanel } from '../components/AccountPanels'
+import DataPanel from '../components/DataPanel'
 import PlanPanel from '../components/PlanPanel'
 import { PageHeader, Panel } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
@@ -47,6 +48,7 @@ export default function Settings() {
       {user && <ProfilePanel user={user} />}
       {user && <PlanPanel />}
       {user && <ApiKeysPanel />}
+      {user && <DataPanel />}
 
       <Panel title="appearance">
         <div className="space-y-5">

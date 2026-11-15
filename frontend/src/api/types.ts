@@ -229,6 +229,8 @@ export interface HealthResponse {
   github_configured?: boolean
   auth?: 'open' | 'accounts'
   signups_open?: boolean
+  payments_enabled?: boolean
+  demo_enabled?: boolean
   code_override_enabled?: boolean
   memory_enabled?: boolean
   byo_groq_key?: boolean

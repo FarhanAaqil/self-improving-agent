@@ -287,6 +287,18 @@ def set_pinned(memory_id: str, pinned: bool, collection=None, workspace: str | N
     return True
 
 
+def delete_workspace(workspace: str, collection=None) -> int:
+    """Forget everything a workspace taught the agent (account deletion). Returns how many."""
+    if not workspace:
+        raise ValueError("A workspace is required")  # never wipe every workspace by accident
+    coll = _get_collection(collection)
+    got = coll.get(where={"workspace": workspace}, include=[])
+    ids = got.get("ids") or []
+    if ids:
+        coll.delete(ids=ids)
+    return len(ids)
+
+
 def memory_stats(collection=None, workspace: str | None = None) -> dict[str, Any]:
     coll = _get_collection(collection)
     got = coll.get(where={"workspace": workspace} if workspace else None, include=["metadatas"])

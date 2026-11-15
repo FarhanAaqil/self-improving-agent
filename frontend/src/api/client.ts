@@ -146,6 +146,22 @@ export async function changePassword(current_password: string, new_password: str
   setCsrfToken(res.csrf_token)
   return res
 }
+export const startDemo = () => post<{ run_id: string; events_url: string; share_url: string }>('/demo/run')
+export const deleteAccount = (password: string) =>
+  request<{ deleted: boolean; runs: number; memories: number }>('/account', { method: 'DELETE', body: JSON.stringify({ password }) })
+
+/** Fetch the account export and hand it to the browser as a file download. */
+export async function downloadAccountExport(): Promise<void> {
+  const data = await request<Record<string, unknown>>('/account/export')
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `code-agent-export-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export const getAccountUsage = () => request<AccountUsage>('/account/usage')
 export const getPlans = () => request<{ items: Plan[]; payments_enabled: boolean }>('/plans')
 export const listApiKeys = () => request<{ items: ApiKeyRecord[] }>('/account/keys')
@@ -183,9 +199,9 @@ export function openRunPr(runId: string): Promise<PrResponse> {
 export async function streamRunEvents(
   runId: string,
   onEvent: (event: RunEvent) => void,
-  options: { signal?: AbortSignal; lastEventId?: number } = {},
+  options: { signal?: AbortSignal; lastEventId?: number; basePath?: string } = {},
 ): Promise<void> {
-  const res = await fetch(`${BASE_URL}/runs/${encodeURIComponent(runId)}/events`, {
+  const res = await fetch(`${BASE_URL}${options.basePath ?? '/runs'}/${encodeURIComponent(runId)}/events`, {
     credentials: 'same-origin',
     headers: {
       Accept: 'text/event-stream',

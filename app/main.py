@@ -49,7 +49,7 @@ from app.memory import MemoryUnavailable
 from app.observability import configure_logging, metrics, new_request_id, request_id
 from app.pipeline import RunSpec, execute_run
 from app.plans import plan_for, runs_per_day
-from app.retention import Maintenance, history_cutoff
+from app.retention import DEMO_WORKSPACE, Maintenance, history_cutoff
 from app.sandbox import (
     SANDBOX_IMAGE,
     _is_docker_available,
@@ -72,7 +72,9 @@ from app.schemas import (
     RunPage,
 )
 from app.security import (
+    RateLimiter,
     auth_mode,
+    client_ip,
     groq_key_of,
     identity_of,
     rate_limited,
@@ -137,7 +139,7 @@ _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 # Pages of the React app. Several share their path with an API route (/runs/{id}, /memory),
 # so the Accept header decides which one a request gets.
 _PAGE_ROUTE = re.compile(
-    r"^/(|history|memory|eval|security|settings|login|signup|verify|forgot|reset|pricing|"
+    r"^/(|history|memory|eval|security|settings|login|signup|verify|forgot|reset|pricing|welcome|"
     r"(runs|compare|shared)/[\w-]+)/?$"
 )
 
@@ -182,7 +184,7 @@ def _cache_policy(request: Request) -> str | None:
         return "no-cache"  # may be stored, but must be revalidated (cheap thanks to the ETag)
     if path.startswith(
         ("/generate", "/execute", "/runs", "/eval", "/memory", "/compare", "/shared", "/usage", "/stats", "/metrics",
-         "/auth", "/account", "/admin")
+         "/auth", "/account", "/admin", "/demo")
     ):
         return "no-store, max-age=0"  # private run data is never written to disk caches
     return None
@@ -361,6 +363,7 @@ def health_check():
         "auth": auth_mode(),
         "signups_open": config.SIGNUPS_OPEN,
         "payments_enabled": bool(config.PAYMENT_LINK_URL),
+        "demo_enabled": config.DEMO_ENABLED,
         "code_override_enabled": ALLOW_CODE_OVERRIDE,
         "memory_enabled": MEMORY_ENABLED,
         "byo_groq_key": ALLOW_BYO_GROQ_KEY,
@@ -686,6 +689,10 @@ async def run_events(run_id: str, request: Request, after: int = Query(0, ge=0))
     run = await asyncio.to_thread(db.get_run, run_id)
     if run is None or (run.get("workspace") or "default") != workspace_of(request) or _past_history(run, request):
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return _event_stream(run_id, request, after)
+
+
+def _event_stream(run_id: str, request: Request, after: int) -> StreamingResponse:
     header = request.headers.get("last-event-id", "")
     start = int(header) if header.isdigit() else after
 
@@ -715,6 +722,45 @@ async def run_events(run_id: str, request: Request, after: int = Query(0, ge=0))
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Public live demo ─────────────────────────────────────────
+
+DEMO_TASK = "Write add(a, b) returning the sum"
+_demo_limiter = RateLimiter(config.DEMO_RUNS_PER_10_MIN, 600)
+
+
+@app.post("/demo/run", status_code=202, tags=["Demo"])
+def start_demo(request: Request):
+    """A full run anyone can watch without an account: the scripted model (no tokens spent,
+    on anyone's key), the real Docker sandbox, spec tests, a failure, the repair."""
+    if not config.DEMO_ENABLED:
+        raise HTTPException(status_code=404, detail="The live demo is switched off on this server.")
+    if not _is_docker_available():
+        raise HTTPException(status_code=503, detail="The sandbox is offline right now, so the demo can't run.")
+    _demo_limiter.check("ip:" + client_ip(request))
+    spec = RunSpec(
+        task=DEMO_TASK,
+        workspace=DEMO_WORKSPACE,
+        fake_llm=True,
+        allow_server_key=False,  # belt and braces: the scripted model never needs a key
+        use_memory=False,
+        concurrency_limit=config.DEMO_CONCURRENCY,
+    )
+    run_id = _new_run(spec)
+    token = secrets.token_urlsafe(16)
+    db.update_run(run_id, share_token=token, key_source="demo")
+    submit_run(run_id, spec)
+    return {"run_id": run_id, "events_url": f"/demo/runs/{run_id}/events", "share_url": f"/shared/{token}"}
+
+
+@app.get("/demo/runs/{run_id}/events", tags=["Demo"])
+async def demo_events(run_id: str, request: Request, after: int = Query(0, ge=0)):
+    """The live event stream of a demo run, and only of demo runs."""
+    run = await asyncio.to_thread(db.get_run, run_id)
+    if run is None or run.get("workspace") != DEMO_WORKSPACE:
+        raise HTTPException(status_code=404, detail="Demo run not found.")
+    return _event_stream(run_id, request, after)
 
 
 # ── PR automation ────────────────────────────────────────────

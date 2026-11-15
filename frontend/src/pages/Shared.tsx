@@ -71,10 +71,12 @@ export default function Shared() {
                 <CodeBlock code={run.spec_tests} maxHeight="18rem" />
               </Panel>
             )}
-            <p className="text-center text-sm text-ink-secondary">
-              Made by a self-repairing agent that runs every line in a locked sandbox.{' '}
-              <Link to="/" className="text-accent-ink underline">Try it</Link>
-            </p>
+            <div className="panel flex flex-col items-center gap-3 p-6 text-center sm:flex-row sm:justify-between sm:text-left">
+              <p className="text-sm text-ink-secondary">
+                Made by CODE_AGENT: it writes the tests first, runs every line in a locked sandbox and fixes its own mistakes.
+              </p>
+              <Link to="/welcome?ref=share" className="btn-primary shrink-0">try it free</Link>
+            </div>
           </>
         )}
       </main>
