@@ -472,6 +472,7 @@ def list_run_summaries(
     q: str | None = None,
     status: str | None = None,
     workspace: str | None = None,
+    since: str | None = None,
     db_path: str = DB_PATH,
 ) -> dict[str, Any]:
     """Lightweight, server-side paginated run list (no generated code in the payload)."""
@@ -486,6 +487,9 @@ def list_run_summaries(
     if workspace:
         where.append("COALESCE(r.workspace, 'default') = ?")
         params.append(workspace)
+    if since:
+        where.append("r.created_at >= ?")
+        params.append(since)
     clause = f" WHERE {' AND '.join(where)}" if where else ""
 
     page_sql = f"""

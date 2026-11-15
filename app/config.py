@@ -119,6 +119,13 @@ SMTP_STARTTLS = _flag("SMTP_STARTTLS", "true")
 MAIL_FROM = os.getenv("MAIL_FROM", "")
 # Development and tests only: also write every email to this folder as JSON
 MAIL_OUTBOX_DIR = os.getenv("MAIL_OUTBOX_DIR", "")
+
+# ── Plans and payment ────────────────────────────────────────
+# Where the Upgrade button goes: any hosted checkout or payment link.
+# {user_id} and {email} are filled in so a payment can be matched to its account.
+PAYMENT_LINK_URL = os.getenv("PAYMENT_LINK_URL", "")
+# Expire lapsed plans, delete history past each plan's limit (and later, back up) this often
+MAINTENANCE_INTERVAL_HOURS = float(os.getenv("MAINTENANCE_INTERVAL_HOURS", "6"))
 MAX_OUTPUT_CHARS = int(os.getenv("MAX_OUTPUT_CHARS", "65536"))
 ALLOWED_ORIGINS = _csv(
     "ALLOWED_ORIGINS",

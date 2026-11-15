@@ -27,6 +27,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from app import config, db, llm
+from app.admin_routes import router as admin_router
 from app.auth_routes import router as auth_router
 from app.certificate import badge_svg, build_certificate
 from app.config import (
@@ -47,7 +48,8 @@ from app.jobs import recover_interrupted_runs, submit_run
 from app.memory import MemoryUnavailable
 from app.observability import configure_logging, metrics, new_request_id, request_id
 from app.pipeline import RunSpec, execute_run
-from app.plans import plan_for
+from app.plans import plan_for, runs_per_day
+from app.retention import Maintenance, history_cutoff
 from app.sandbox import (
     SANDBOX_IMAGE,
     _is_docker_available,
@@ -98,13 +100,16 @@ async def lifespan(app: FastAPI):
     # Fails fast with a clear message if another process already owns this data directory
     lock = InstanceLock()
     lock.acquire()
+    maintenance = Maintenance(config.MAINTENANCE_INTERVAL_HOURS * 3600)
     try:
         db.init_db()
         interrupted = recover_interrupted_runs()
         if interrupted:
             logger.warning("Marked %d interrupted run(s) as failed", interrupted)
+        maintenance.start()
         yield
     finally:
+        maintenance.stop()
         lock.release()
 
 
@@ -116,6 +121,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -131,7 +137,8 @@ _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 # Pages of the React app. Several share their path with an API route (/runs/{id}, /memory),
 # so the Accept header decides which one a request gets.
 _PAGE_ROUTE = re.compile(
-    r"^/(|history|memory|eval|security|settings|login|signup|verify|forgot|reset|(runs|compare|shared)/[\w-]+)/?$"
+    r"^/(|history|memory|eval|security|settings|login|signup|verify|forgot|reset|pricing|"
+    r"(runs|compare|shared)/[\w-]+)/?$"
 )
 
 
@@ -175,7 +182,7 @@ def _cache_policy(request: Request) -> str | None:
         return "no-cache"  # may be stored, but must be revalidated (cheap thanks to the ETag)
     if path.startswith(
         ("/generate", "/execute", "/runs", "/eval", "/memory", "/compare", "/shared", "/usage", "/stats", "/metrics",
-         "/auth", "/account")
+         "/auth", "/account", "/admin")
     ):
         return "no-store, max-age=0"  # private run data is never written to disk caches
     return None
@@ -256,10 +263,17 @@ def _run_out(run: dict) -> RunOut:
     return RunOut(**{**run, "memories": memories})
 
 
+def _past_history(run: dict, request: Request) -> bool:
+    cutoff = history_cutoff(identity_of(request).user)
+    return bool(cutoff and str(run.get("created_at") or "") < cutoff)
+
+
 def _load_run(run_id: str, request: Request | None = None) -> dict:
     run = db.get_run_with_attempts(run_id)
-    # Another workspace's run looks exactly like a missing one
-    if not run or (request is not None and (run.get("workspace") or "default") != workspace_of(request)):
+    # Another workspace's run (or one past the plan's history) looks exactly like a missing one
+    if not run or (request is not None and (
+        (run.get("workspace") or "default") != workspace_of(request) or _past_history(run, request)
+    )):
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
     return run
 
@@ -280,14 +294,25 @@ BYO_KEY_REQUIRED = (
 )
 
 
-def _run_access(request: Request) -> RunAccess:
-    """Decide how a new run is paid for, or refuse it. Free users never touch the server's key."""
+def _run_access(request: Request, runs: int = 1) -> RunAccess:
+    """Decide how `runs` new runs are paid for, or refuse them. Free users never touch our key."""
     identity = identity_of(request)
     own_key = groq_key_of(request)
     if identity.user is None:  # the operator (env key or local development)
         _check_budget(request)
         return RunAccess(own_key, True, 0, "own" if own_key else "server")
     plan = plan_for(identity.user)
+    allowed = runs_per_day(identity.user)
+    started = db.runs_started_today(identity.workspace)
+    if started + runs > allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"That would go past today's limit of {allowed} runs on the {plan.label} plan "
+                f"({started} started so far). It resets at midnight, server time."
+                + ("" if plan.name != "free" else " Pro gives you more.")
+            ),
+        )
     if own_key:
         # Their key, and only their key: no silent fallback to ours if it fails
         return RunAccess(own_key, False, plan.concurrent_runs, "own")
@@ -335,6 +360,7 @@ def health_check():
         "github_configured": IS_GITHUB_CONFIGURED,
         "auth": auth_mode(),
         "signups_open": config.SIGNUPS_OPEN,
+        "payments_enabled": bool(config.PAYMENT_LINK_URL),
         "code_override_enabled": ALLOW_CODE_OVERRIDE,
         "memory_enabled": MEMORY_ENABLED,
         "byo_groq_key": ALLOW_BYO_GROQ_KEY,
@@ -541,7 +567,7 @@ def create_run(req: GenerateAndRepairRequest, request: Request):
 )
 def compare_models(req: CompareRequest, request: Request):
     """Run the same task on several models side by side; follow with GET /compare/{group_id}."""
-    access = _run_access(request)
+    access = _run_access(request, runs=len(req.models))
     group_id = f"cmp_{uuid.uuid4().hex[:8]}"
     runs = []
     for model in req.models:
@@ -554,7 +580,7 @@ def compare_models(req: CompareRequest, request: Request):
 
 @app.get("/compare/{group_id}", dependencies=[Depends(verify_api_access)], tags=["Runs"])
 def get_comparison(group_id: str, request: Request):
-    runs = db.list_group_runs(group_id, workspace=workspace_of(request))
+    runs = [r for r in db.list_group_runs(group_id, workspace=workspace_of(request)) if not _past_history(r, request)]
     if not runs:
         raise HTTPException(status_code=404, detail=f"Comparison '{group_id}' not found.")
     return {"group_id": group_id, "task": runs[0]["task_description"], "runs": runs}
@@ -568,7 +594,10 @@ def list_runs_endpoint(
     q: Optional[str] = Query(None, max_length=200),
     status: Optional[str] = Query(None, pattern="^(success|failed|early_stopped|running)$"),
 ):
-    return db.list_run_summaries(page=page, page_size=page_size, q=q, status=status, workspace=workspace_of(request))
+    return db.list_run_summaries(
+        page=page, page_size=page_size, q=q, status=status, workspace=workspace_of(request),
+        since=history_cutoff(identity_of(request).user),
+    )
 
 
 @app.get(
@@ -654,8 +683,8 @@ def _sse(event_id: int, event_type: str, payload: dict) -> str:
 @app.get("/runs/{run_id}/events", dependencies=[Depends(verify_api_access)], tags=["Runs"])
 async def run_events(run_id: str, request: Request, after: int = Query(0, ge=0)):
     """Server-sent events for a run. Replays history, then streams until the run finishes."""
-    owner = await asyncio.to_thread(db.run_workspace, run_id)
-    if owner is None or owner != workspace_of(request):
+    run = await asyncio.to_thread(db.get_run, run_id)
+    if run is None or (run.get("workspace") or "default") != workspace_of(request) or _past_history(run, request):
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
     header = request.headers.get("last-event-id", "")
     start = int(header) if header.isdigit() else after

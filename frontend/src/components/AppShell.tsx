@@ -27,7 +27,7 @@ function useHotkey(handler: () => void) {
 const CommandPalette = lazy(() => import('./CommandPalette'))
 
 // Pages anyone may look at without an account
-const PUBLIC_PAGES = ['/eval', '/security']
+const PUBLIC_PAGES = ['/eval', '/security', '/pricing']
 
 export default function AppShell() {
   const location = useLocation()
@@ -156,6 +156,7 @@ export default function AppShell() {
               </>
             ) : (
               <>
+                <Link to="/pricing" className="btn-ghost hidden px-2 py-1 text-xs sm:inline-flex">pricing</Link>
                 <Link to="/login" className="btn-ghost px-2 py-1 text-xs">log in</Link>
                 <Link to="/signup" className="btn-primary px-2.5 py-1 text-xs">sign up</Link>
               </>

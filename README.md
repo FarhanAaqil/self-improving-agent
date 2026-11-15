@@ -250,7 +250,16 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 | Pro account | Their own if they send one, otherwise the server's within a daily token budget | 3 runs at a time |
 | Operator (`API_KEY`/`API_KEYS`, or local development) | The server's | `DAILY_TOKEN_BUDGET`, global caps |
 
-Plan numbers live in one file, [`app/plans.py`](app/plans.py). Runs queue fairly: workers take turns between users, so one person's burst never makes everyone else wait. Pull requests use the operator's `GITHUB_TOKEN`, so only the operator can open them (`github_access_for` in `app/github_agent.py` is the hook for per-user GitHub later).
+Plan numbers live in one file, [`app/plans.py`](app/plans.py), and the server enforces all of them: runs per day (lower for accounts younger than a day), runs at once, history kept (older runs are hidden at once and deleted by a maintenance job), and the server-key token budget. Settings shows each limit and today's usage.
+
+**Payment, version 1.** The Upgrade button opens `PAYMENT_LINK_URL` (any provider's hosted checkout or payment link; `{user_id}` and `{email}` in it are filled in so you can match the payment). Then the operator upgrades the account:
+
+```bash
+python -m app.admin set-plan someone@example.com pro --days 31     # or --until 2027-01-31
+curl -X POST -H "X-API-Key: $API_KEY" -H "Content-Type: application/json"      -d '{"plan":"pro","days":31}' https://your-domain.example/admin/users/<user_id>/plan
+```
+
+Renewing early adds the days on top. When `paid_until` passes, the account is Free again straight away (and the maintenance job records it). Version 2, a provider webhook with signature checks and idempotency, would call the same `billing.grant_plan`. Runs queue fairly: workers take turns between users, so one person's burst never makes everyone else wait. Pull requests use the operator's `GITHUB_TOKEN`, so only the operator can open them (`github_access_for` in `app/github_agent.py` is the hook for per-user GitHub later).
 
 ### Configuration
 
@@ -269,6 +278,8 @@ Plan numbers live in one file, [`app/plans.py`](app/plans.py). Runs queue fairly
 | `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
 | `ALLOW_BYO_GROQ_KEY` | `true` | Callers may send `X-Groq-Key`; used for that run only, never stored |
 | `DAILY_TOKEN_BUDGET` | `0` (off) | Per-workspace daily token cap; new runs get `429` once spent |
+| `PAYMENT_LINK_URL` | — | Where the Upgrade button goes. `{user_id}` and `{email}` are filled in |
+| `MAINTENANCE_INTERVAL_HOURS` | `6` | How often lapsed plans are expired and old history is deleted |
 | `RATE_LIMIT_PER_MINUTE` | `20` | Per-user limit (per address for anonymous callers) on endpoints that spend tokens or sandbox time |
 | `MAX_CONCURRENT_RUNS`, `MAX_CONCURRENT_SANDBOXES` | `3`, `4` | Global caps. Runs are shared out round-robin between users, and each user also has their plan's own cap |
 | `CERT_SIGNING_KEY` | — | HMAC-signs exported verification certificates |
@@ -296,6 +307,8 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside local dev
 | `GET` | `/auth/me` | The signed-in account and its CSRF token |
 | `GET`/`POST`/`DELETE` | `/account/keys` | Your API keys for scripts: create (shown once), list, revoke |
 | `POST` | `/account/password` | Change your password (signs out your other devices) |
+| `GET` | `/account/usage`, `/plans` | Your plan, limits and today's usage; the public plan list |
+| `POST` | `/admin/users/{id}/plan` · `GET /admin/users/lookup` | Operator only: put an account on a plan until a date; find an account by email |
 | `POST` | `/runs` | Start the full loop in the background (202, returns `run_id`) |
 | `GET` | `/runs/{id}/events` | Server-sent events for every step, resumable with `Last-Event-ID` |
 | `GET` | `/runs`, `/runs/{id}` | Paginated summaries (`page`, `q`, `status`) and full run detail |

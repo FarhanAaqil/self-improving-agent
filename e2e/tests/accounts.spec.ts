@@ -41,6 +41,11 @@ test('a stranger signs up, confirms their email and makes an API key', async ({ 
   await expect(page.getByTestId('new-api-key')).toHaveText(/^sia_/)
   await expect(page.getByText('e2e script')).toBeVisible()
 
+  // A new account starts on Free, with its limits in Settings and on the pricing page
+  await expect(page.getByText('runs today')).toBeVisible()
+  await page.goto('/pricing')
+  await expect(page.getByText('your plan')).toBeVisible()
+
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL(/\/login/)
 
