@@ -25,6 +25,16 @@ def history_cutoff(user: dict[str, Any] | None, now: datetime | None = None) -> 
     return ((now or datetime.now()) - timedelta(days=plan_for(user).history_days)).isoformat()
 
 
+DEMO_WORKSPACE = "demo"
+
+
+def purge_demo_runs(now: datetime | None = None) -> int:
+    """Demo runs only need to live long enough to be watched; drop them after a day."""
+    cutoff = ((now or datetime.now()) - timedelta(days=1)).isoformat()
+    with db.get_connection() as conn:
+        return conn.execute("DELETE FROM runs WHERE workspace = ? AND created_at < ?", (DEMO_WORKSPACE, cutoff)).rowcount
+
+
 def purge_expired_history(now: datetime | None = None) -> int:
     """Delete runs (with their attempts and events) older than each owner's plan allows."""
     with db.get_connection() as conn:
@@ -48,7 +58,11 @@ def add_chore(chore: Callable[[], Any]) -> None:
 
 
 def run_maintenance(now: datetime | None = None) -> dict[str, int]:
-    result = {"plans_expired": billing.expire_lapsed_plans(), "runs_purged": purge_expired_history(now)}
+    result = {
+        "plans_expired": billing.expire_lapsed_plans(),
+        "runs_purged": purge_expired_history(now),
+        "demo_runs_purged": purge_demo_runs(now),
+    }
     for chore in _extra_chores:
         try:
             chore()

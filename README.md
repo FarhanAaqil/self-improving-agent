@@ -242,6 +242,13 @@ uvicorn app.main:app --reload --port 8000     # API (and the built UI, if presen
 npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload on :5173
 ```
 
+### The product around it
+
+- **Landing page** (`/welcome`) with a **live demo** anyone can watch: a full run on the scripted model (no tokens, no account) in the real sandbox, ending in a public certificate. Limited per visitor (`DEMO_RUNS_PER_10_MIN`) and in total (`DEMO_CONCURRENCY`), cleaned up after a day, and off with `DEMO_ENABLED=false`.
+- **First run**: after confirming their email, a new user pastes their Groq key and runs a starter task from a three-step checklist on the Workbench.
+- **Growth loop**: every share page ends with a "try it free" link to the landing page, and the badge markdown links to the share page.
+- **Settings**: profile and password, API keys, plan and usage, **export my runs** (one JSON file) and **delete my account**, which removes runs, attempts, events, memory vectors, keys, sessions and email tokens.
+
 ### Who pays for a run
 
 | Caller | Groq key used | Limits |
@@ -278,6 +285,7 @@ Renewing early adds the days on top. When `paid_until` passes, the account is Fr
 | `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
 | `ALLOW_BYO_GROQ_KEY` | `true` | Callers may send `X-Groq-Key`; used for that run only, never stored |
 | `DAILY_TOKEN_BUDGET` | `0` (off) | Per-workspace daily token cap; new runs get `429` once spent |
+| `DEMO_ENABLED`, `DEMO_RUNS_PER_10_MIN`, `DEMO_CONCURRENCY` | `true`, `5`, `2` | The public live demo on the landing page |
 | `PAYMENT_LINK_URL` | — | Where the Upgrade button goes. `{user_id}` and `{email}` are filled in |
 | `MAINTENANCE_INTERVAL_HOURS` | `6` | How often lapsed plans are expired and old history is deleted |
 | `RATE_LIMIT_PER_MINUTE` | `20` | Per-user limit (per address for anonymous callers) on endpoints that spend tokens or sandbox time |
@@ -307,6 +315,8 @@ Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside local dev
 | `GET` | `/auth/me` | The signed-in account and its CSRF token |
 | `GET`/`POST`/`DELETE` | `/account/keys` | Your API keys for scripts: create (shown once), list, revoke |
 | `POST` | `/account/password` | Change your password (signs out your other devices) |
+| `GET` | `/account/export` · `DELETE /account` | Download everything you have here; delete the account and all of it (password required) |
+| `POST` | `/demo/run` · `GET /demo/runs/{id}/events` | Public live demo: start one and stream it |
 | `GET` | `/account/usage`, `/plans` | Your plan, limits and today's usage; the public plan list |
 | `POST` | `/admin/users/{id}/plan` · `GET /admin/users/lookup` | Operator only: put an account on a plan until a date; find an account by email |
 | `POST` | `/runs` | Start the full loop in the background (202, returns `run_id`) |

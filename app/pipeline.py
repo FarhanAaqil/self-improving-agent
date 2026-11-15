@@ -57,6 +57,8 @@ class RunSpec:
     allow_server_key: bool = True
     # How many of this workspace's runs may work at once (0 = only the global cap)
     concurrency_limit: int = 0
+    # The public demo: the scripted model, never a real one
+    fake_llm: bool = False
     # Benchmarks turn these off to measure one thing at a time
     review: bool = True
     strengthen: bool = True
@@ -270,6 +272,7 @@ def execute_run(run_id: str, spec: RunSpec) -> str:
     """Run the full pipeline for an existing `runs` row. Returns the final status."""
     emit = Emitter(run_id)
     with (
+        llm.fake_mode(spec.fake_llm),
         llm.groq_key(spec.groq_key, allow_server_key=spec.allow_server_key),
         sandbox_owner(spec.workspace, spec.concurrency_limit),
         llm.track_usage() as usage,

@@ -124,6 +124,11 @@ MAIL_OUTBOX_DIR = os.getenv("MAIL_OUTBOX_DIR", "")
 # Where the Upgrade button goes: any hosted checkout or payment link.
 # {user_id} and {email} are filled in so a payment can be matched to its account.
 PAYMENT_LINK_URL = os.getenv("PAYMENT_LINK_URL", "")
+# The public live demo on the landing page: scripted model, real sandbox, no sign-up
+DEMO_ENABLED = _flag("DEMO_ENABLED", "true")
+# Demo runs a visitor (per address) may start per 10 minutes, and at once across everyone
+DEMO_RUNS_PER_10_MIN = int(os.getenv("DEMO_RUNS_PER_10_MIN", "5"))
+DEMO_CONCURRENCY = int(os.getenv("DEMO_CONCURRENCY", "2"))
 # Expire lapsed plans, delete history past each plan's limit (and later, back up) this often
 MAINTENANCE_INTERVAL_HOURS = float(os.getenv("MAINTENANCE_INTERVAL_HOURS", "6"))
 MAX_OUTPUT_CHARS = int(os.getenv("MAX_OUTPUT_CHARS", "65536"))

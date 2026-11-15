@@ -17,7 +17,7 @@ const MAX_RETRIES = 6
  * connection drops before `run_finished`, it reconnects with Last-Event-ID so
  * nothing is lost or duplicated.
  */
-export function useRunStream(runId: string | undefined): RunStream {
+export function useRunStream(runId: string | undefined, basePath?: string): RunStream {
   const [state, setState] = useState<RunStream>({
     events: [],
     finished: false,
@@ -56,7 +56,7 @@ export function useRunStream(runId: string | undefined): RunStream {
       while (!finished && !controller.signal.aborted && retries <= MAX_RETRIES) {
         try {
           setState((s) => ({ ...s, connected: true }))
-          await streamRunEvents(runId, onEvent, { signal: controller.signal, lastEventId: lastId.current })
+          await streamRunEvents(runId, onEvent, { signal: controller.signal, lastEventId: lastId.current, basePath })
         } catch (err) {
           if (controller.signal.aborted) return
           retries++
@@ -71,7 +71,7 @@ export function useRunStream(runId: string | undefined): RunStream {
 
     connect()
     return () => controller.abort()
-  }, [runId])
+  }, [runId, basePath])
 
   return state
 }

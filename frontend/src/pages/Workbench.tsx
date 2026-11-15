@@ -3,6 +3,7 @@ import { ArrowRight, Brain, FlaskConical, Play, ShieldCheck, Sliders, Swords, Wr
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { getStoredGroqKey, listRuns, searchMemory, startComparison, startRun } from '../api/client'
+import FirstRun, { STARTER_TASK } from '../components/FirstRun'
 import GroqKeyCallout from '../components/GroqKeyCallout'
 import { ErrorNote, Kbd, PageHeader, StatusPill } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
@@ -95,8 +96,8 @@ export default function Workbench() {
   // Free accounts pay with their own Groq key; nothing can run until it's in this tab
   const keyMissing = Boolean(user?.needs_own_groq_key) && !hasGroqKey
   const run = useMutation({
-    mutationFn: async () => {
-      const base = { task_description: task.trim(), max_attempts: attempts, skip_agents: skip }
+    mutationFn: async (override?: string) => {
+      const base = { task_description: (override ?? task).trim(), max_attempts: attempts, skip_agents: skip }
       if (racing) {
         const res = await startComparison({ ...base, models: race })
         return `/compare/${res.group_id}`
@@ -108,7 +109,7 @@ export default function Workbench() {
   })
 
   const ready = task.trim().length >= 5 && !run.isPending && !keyMissing
-  const submit = () => ready && run.mutate()
+  const submit = () => ready && run.mutate(undefined)
 
   return (
     <div className="space-y-8">
@@ -119,6 +120,19 @@ export default function Workbench() {
       />
 
       {keyMissing && <GroqKeyCallout onSaved={() => setHasGroqKey(true)} />}
+      {user && (
+        <FirstRun
+          userId={user.user_id}
+          hasKey={hasGroqKey}
+          needsKey={user.needs_own_groq_key}
+          ranOnce={(recent?.total ?? 0) > 0}
+          verifiedOnce={(recent?.status_counts?.success ?? 0) > 0}
+          onRunStarter={() => {
+            setTask(STARTER_TASK)
+            run.mutate(STARTER_TASK)
+          }}
+        />
+      )}
 
       <section className="panel shadow-ledger">
         <label htmlFor="task" className="sr-only">Task description</label>

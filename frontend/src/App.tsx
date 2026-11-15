@@ -22,6 +22,7 @@ const Verify = lazy(() => import('./pages/auth/Verify'))
 const Forgot = lazy(() => import('./pages/auth/Forgot'))
 const Reset = lazy(() => import('./pages/auth/Reset'))
 const Pricing = lazy(() => import('./pages/Pricing'))
+const Landing = lazy(() => import('./pages/Landing'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +50,7 @@ export default function App() {
         <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route path="/shared/:token" element={<Shared />} />
+            <Route path="/welcome" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/verify" element={<Verify />} />

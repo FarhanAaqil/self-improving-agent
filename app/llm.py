@@ -37,6 +37,19 @@ _request_key: contextvars.ContextVar[str | None] = contextvars.ContextVar("groq_
 _server_key_allowed: contextvars.ContextVar[bool] = contextvars.ContextVar("server_key_allowed", default=True)
 
 
+# The public demo forces the scripted model for its runs only, so a visitor never spends tokens
+_force_fake: contextvars.ContextVar[bool] = contextvars.ContextVar("force_fake_llm", default=False)
+
+
+@contextmanager
+def fake_mode(enabled: bool = True):
+    token = _force_fake.set(enabled)
+    try:
+        yield
+    finally:
+        _force_fake.reset(token)
+
+
 class ServerKeyNotAllowed(PermissionError):
     """This caller must use their own Groq key, and none was given."""
 
@@ -145,7 +158,7 @@ def chat(
     client: Any = None,
 ) -> str:
     """Send a chat completion and return the stripped text content."""
-    if FAKE_LLM and client is None:
+    if (FAKE_LLM or _force_fake.get()) and client is None:
         from app import fake_llm
 
         reply = fake_llm.respond(messages)

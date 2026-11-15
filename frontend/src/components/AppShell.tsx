@@ -62,6 +62,8 @@ export default function AppShell() {
   })
 
   if (needsLogin && !sessionLoading && !PUBLIC_PAGES.includes(location.pathname)) {
+    // Visitors arriving at the front door see the landing page; deep links ask them to log in
+    if (location.pathname === '/') return <Navigate to="/welcome" replace />
     return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   }
 

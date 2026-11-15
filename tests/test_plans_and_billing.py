@@ -243,7 +243,7 @@ def test_maintenance_runs_every_chore_and_survives_a_failing_one():
         result = retention.run_maintenance()
     finally:
         retention._extra_chores.clear()
-    assert set(result) == {"plans_expired", "runs_purged"} and calls == ["ok"]
+    assert set(result) == {"plans_expired", "runs_purged", "demo_runs_purged"} and calls == ["ok"]
 
 
 def test_admin_command_line(capsys):

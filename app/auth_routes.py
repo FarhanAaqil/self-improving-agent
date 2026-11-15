@@ -53,6 +53,10 @@ class KeyRequest(BaseModel):
     name: str = Field("", max_length=60)
 
 
+class DeleteAccount(BaseModel):
+    password: str = Field(..., min_length=1, max_length=accounts.PASSWORD_MAX)
+
+
 def _github_configured() -> bool:
     from app.github_agent import IS_GITHUB_CONFIGURED
 
@@ -285,6 +289,70 @@ def account_usage(request: Request):
 def list_plans():
     """Public: what each plan includes, for the pricing page."""
     return {"items": [p.public() for p in plans.PLANS.values()], "payments_enabled": billing.payments_enabled()}
+
+
+@router.get("/account/export", dependencies=[Depends(verify_api_access)])
+def export_account(request: Request):
+    """Everything this account has here, as one JSON file: runs with attempts and events,
+    what the agent remembers, and key names. Never key secrets or password hashes."""
+    from fastapi.responses import JSONResponse
+
+    user = require_user(request)
+    workspace = user["workspace"]
+    with db.get_connection() as conn:
+        run_ids = [r[0] for r in conn.execute(
+            "SELECT run_id FROM runs WHERE workspace = ? ORDER BY created_at", (workspace,)
+        ).fetchall()]
+    runs = []
+    for run_id in run_ids:
+        run = db.get_run_with_attempts(run_id) or {}
+        run.pop("share_token", None)
+        run["events"] = db.get_events(run_id)
+        runs.append(run)
+    memories: list = []
+    if config.MEMORY_ENABLED:
+        try:
+            from app import memory
+
+            memories = memory.list_memories(limit=10_000, workspace=workspace)["items"]
+        except Exception:
+            logger.warning("Memory export failed for %s", user["user_id"], exc_info=True)
+    body = {
+        "exported_at": accounts.now().isoformat(),
+        "account": {k: user.get(k) for k in ("user_id", "email", "created_at", "email_verified_at", "plan", "paid_until")},
+        "api_keys": accounts.list_api_keys(user["user_id"]),
+        "runs": runs,
+        "memories": memories,
+    }
+    return JSONResponse(
+        body,
+        headers={"Content-Disposition": f'attachment; filename="code-agent-export-{user["user_id"]}.json"'},
+    )
+
+
+@router.delete("/account", dependencies=[Depends(verify_api_access)])
+def delete_account(body: DeleteAccount, request: Request, response: Response):
+    """Delete the account and everything in it: runs, attempts, events, memory vectors,
+    API keys, sessions and email tokens. Needs the password, and can't be undone."""
+    user = require_user(request)
+    _throttle(request)
+    if identity_of(request).via != "session":
+        raise HTTPException(status_code=403, detail="Delete your account from a signed-in browser session.")
+    if accounts.authenticate(user["email"], body.password) is None:
+        raise HTTPException(status_code=403, detail="That password isn't right.")
+    workspace = user["workspace"]
+    forgotten = 0
+    if config.MEMORY_ENABLED:
+        from app import memory
+
+        forgotten = memory.delete_workspace(workspace)  # first: if this fails, nothing is half-deleted
+    with db.get_connection() as conn:
+        runs = conn.execute("DELETE FROM runs WHERE workspace = ?", (workspace,)).rowcount
+        # Sessions, email tokens and API keys go with the user row (ON DELETE CASCADE)
+        conn.execute("DELETE FROM users WHERE user_id = ?", (user["user_id"],))
+    _clear_session_cookie(response)
+    logger.info("Account %s deleted (%d runs, %d memories)", user["user_id"], runs, forgotten)
+    return {"deleted": True, "runs": runs, "memories": forgotten}
 
 
 @router.get("/account/keys", dependencies=[Depends(verify_api_access)])
