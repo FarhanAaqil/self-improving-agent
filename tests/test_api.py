@@ -160,10 +160,11 @@ def test_reads_require_key_when_configured():
 def test_production_without_key_fails_closed():
     from unittest.mock import patch
 
+    # No env key in production: accounts are the way in, and anonymous callers get 401
     with patch("app.config.API_KEY", None), patch("app.config.IS_DEV", False):
         resp = client.post("/generate", json={"task_description": "hello world"})
-        assert resp.status_code == 503
-        assert client.get("/runs").status_code == 503
+        assert resp.status_code == 401
+        assert client.get("/runs").status_code == 401
 
 
 def test_unknown_model_and_oversized_task_rejected():

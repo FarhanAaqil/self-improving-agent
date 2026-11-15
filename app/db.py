@@ -143,6 +143,10 @@ def init_db(db_path: str = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(final_status);
         """)
 
+        from app import accounts  # late import: accounts builds on this module
+
+        accounts.init_tables(conn)
+
 
 # Columns added after the first release. New databases and old ones converge on the same shape.
 ATTEMPT_COLUMNS = {

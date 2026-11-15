@@ -69,10 +69,10 @@ def test_development_skips_the_checks(monkeypatch):
     enforce_safe_startup(lambda: False)  # local experiments stay possible
 
 
-def test_missing_api_key_only_warns(monkeypatch, caplog):
-    _production(monkeypatch, API_KEY=None, API_KEYS="")
+def test_missing_smtp_only_warns(monkeypatch, caplog):
+    _production(monkeypatch, SMTP_HOST="", MAIL_FROM="")
     enforce_safe_startup(lambda: True)
-    assert "401" in caplog.text
+    assert "SMTP is not configured" in caplog.text
 
 
 def test_waits_for_a_slow_socket_proxy():

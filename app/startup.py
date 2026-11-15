@@ -61,6 +61,10 @@ def enforce_safe_startup(docker_probe: Callable[[], bool]) -> None:
             f"Refusing to start with APP_ENV={config.APP_ENV}: {detail}. "
             "Fix the setting, or set APP_ENV=development on a machine only you can reach."
         )
-    if not (config.API_KEY or config.API_KEYS.strip()):
-        # Not fatal: the API already fails closed, so this server answers 401 to everything
-        logger.warning("No API_KEY or API_KEYS set: every protected endpoint will answer 401")
+    from app import mailer
+
+    if not mailer.is_configured():
+        # Not fatal, but nobody can confirm an email address until it is set
+        logger.warning("SMTP is not configured: sign-up, verification and reset emails won't be sent")
+    if config.PUBLIC_BASE_URL.startswith("http://localhost"):
+        logger.warning("PUBLIC_BASE_URL is %s: links in emails will point there", config.PUBLIC_BASE_URL)

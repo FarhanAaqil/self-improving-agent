@@ -96,6 +96,29 @@ RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
 MAX_CONCURRENT_SANDBOXES = int(os.getenv("MAX_CONCURRENT_SANDBOXES", "4"))
 # How long a production server waits at boot for Docker (or the socket proxy) to answer
 DOCKER_STARTUP_WAIT_SECONDS = float(os.getenv("DOCKER_STARTUP_WAIT_SECONDS", "30"))
+
+# ── Accounts ─────────────────────────────────────────────────
+# Development without any key stays open (one shared "default" workspace) unless this is off
+OPEN_DEV_ACCESS = _flag("OPEN_DEV_ACCESS", "true")
+SIGNUPS_OPEN = _flag("SIGNUPS_OPEN", "true")
+SESSION_COOKIE = "sia_session"
+SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "14"))
+# Session cookies are Secure (HTTPS only) everywhere except local development
+COOKIE_SECURE = _flag("COOKIE_SECURE", "false" if IS_DEV else "true")
+# Sign-up, login, reset and verification attempts per client per minute
+AUTH_RATE_LIMIT_PER_MINUTE = int(os.getenv("AUTH_RATE_LIMIT_PER_MINUTE", "10"))
+# Where links in emails point (the public address of this app)
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+
+# ── Email (SMTP) ─────────────────────────────────────────────
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_STARTTLS = _flag("SMTP_STARTTLS", "true")
+MAIL_FROM = os.getenv("MAIL_FROM", "")
+# Development and tests only: also write every email to this folder as JSON
+MAIL_OUTBOX_DIR = os.getenv("MAIL_OUTBOX_DIR", "")
 MAX_OUTPUT_CHARS = int(os.getenv("MAX_OUTPUT_CHARS", "65536"))
 ALLOWED_ORIGINS = _csv(
     "ALLOWED_ORIGINS",

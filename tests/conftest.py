@@ -18,6 +18,7 @@ os.environ["RESULTS_DIR"] = os.path.join(_SANDBOX_DIR, "results")
 os.environ["MEMORY_DIR"] = os.path.join(_SANDBOX_DIR, "memory_db")
 os.environ["MEMORY_ENABLED"] = "false"
 os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
+os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ.pop("API_KEY", None)
 
 import pytest  # noqa: E402
