@@ -54,6 +54,11 @@ export default function Signup() {
           <Field label="password (10+ characters)" type="password" autoComplete="new-password" minLength={10} required value={password} onChange={(e) => setPassword(e.target.value)} />
           <button type="submit" className="btn-primary w-full justify-center" disabled={busy}>{busy ? 'creating…' : 'create account'}</button>
           <p className="text-xs text-ink-muted">You'll get an email to confirm your address before your first run.</p>
+          <p className="text-xs text-ink-muted">
+            By signing up you agree to the <Link to="/terms" className="underline">terms</Link>,{' '}
+            <Link to="/privacy" className="underline">privacy policy</Link> and{' '}
+            <Link to="/acceptable-use" className="underline">acceptable use policy</Link> (drafts).
+          </p>
         </form>
       )}
     </AuthLayout>

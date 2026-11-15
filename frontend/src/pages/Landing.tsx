@@ -81,6 +81,9 @@ export default function Landing() {
             <Link to="/pricing" className="hover:text-ink">pricing</Link>
             <Link to="/security" className="hover:text-ink">security</Link>
             <Link to="/eval" className="hover:text-ink">benchmarks</Link>
+            <Link to="/terms" className="hover:text-ink">terms</Link>
+            <Link to="/privacy" className="hover:text-ink">privacy</Link>
+            <Link to="/acceptable-use" className="hover:text-ink">acceptable use</Link>
           </nav>
         </div>
       </footer>

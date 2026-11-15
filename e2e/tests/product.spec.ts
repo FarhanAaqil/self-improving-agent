@@ -44,3 +44,16 @@ test('a new account: paste a key, run the starter task, watch it fail, fix itsel
   await page.getByRole('button', { name: 'delete everything' }).click()
   await expect(page).toHaveURL(/\/welcome/)
 })
+
+test('the operator gets an admin page with every account, and legal pages are marked as drafts', async ({ page }) => {
+  // Local development without keys is run by its operator
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Accounts' })).toBeVisible()
+  await expect(page.getByText(/^\d+ accounts$/)).toBeVisible()
+
+  for (const path of ['/terms', '/privacy', '/acceptable-use']) {
+    await page.goto(path)
+    await expect(page.getByText('DRAFT: needs human review.')).toBeVisible()
+  }
+})

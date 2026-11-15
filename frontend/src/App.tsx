@@ -23,6 +23,8 @@ const Forgot = lazy(() => import('./pages/auth/Forgot'))
 const Reset = lazy(() => import('./pages/auth/Reset'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const Landing = lazy(() => import('./pages/Landing'))
+const Admin = lazy(() => import('./pages/Admin'))
+const Legal = lazy(() => import('./pages/Legal'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +53,9 @@ export default function App() {
           <Routes>
             <Route path="/shared/:token" element={<Shared />} />
             <Route path="/welcome" element={<Landing />} />
+            <Route path="/terms" element={<Legal />} />
+            <Route path="/privacy" element={<Legal />} />
+            <Route path="/acceptable-use" element={<Legal />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/verify" element={<Verify />} />
@@ -65,6 +70,7 @@ export default function App() {
               <Route path="/security" element={<Security />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/pricing" element={<Pricing />} />
+              <Route path="/admin" element={<Admin />} />
               <Route path="/compare/:groupId" element={<Compare />} />
               <Route path="*" element={<NotFound />} />
             </Route>

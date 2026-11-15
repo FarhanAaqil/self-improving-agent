@@ -1,0 +1,32 @@
+# Checks the live site's /health every 10 minutes. Set the repository variable PUBLIC_URL
+# (Settings > Secrets and variables > Actions > Variables), e.g. https://your-domain.example.
+# GitHub emails you when a scheduled run fails. Without PUBLIC_URL the job is skipped.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: Live /health
+    if: vars.PUBLIC_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /health (three tries)
+        env:
+          URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 15 "$URL/health" | grep -q '"status":"healthy"'; then
+              echo "up"; exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::$URL/health is not answering healthy"
+          exit 1

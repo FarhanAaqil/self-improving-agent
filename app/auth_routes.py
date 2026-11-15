@@ -124,8 +124,9 @@ def me(request: Request):
         "user": public_user(session[0]) if session else None,
         "csrf_token": session[1] if session else None,
         "auth": auth_mode(),
-        # Local development without keys is run by its operator
-        "operator": session is None and auth_mode() == "open",
+        # Local development without keys is run by its operator; ADMIN_EMAILS accounts too
+        "operator": (session is None and auth_mode() == "open")
+        or bool(session and session[0]["email"].lower() in config.ADMIN_EMAILS),
         "can_open_prs": session is None and auth_mode() == "open" and _github_configured(),
         "signups_open": config.SIGNUPS_OPEN,
     }

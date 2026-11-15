@@ -34,7 +34,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: health } = useHealth()
-  const { user, needsLogin, isLoading: sessionLoading } = useSession()
+  const { user, needsLogin, isOperator, isLoading: sessionLoading } = useSession()
   const { isDark, update } = usePreferences()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const needsKey = needsLogin
@@ -146,6 +146,9 @@ export default function AppShell() {
               <Command className="h-3.5 w-3.5" aria-hidden />
               <Kbd>Ctrl K</Kbd>
             </button>
+            {isOperator && (
+              <Link to="/admin" className="btn-ghost px-2 py-1 text-xs">admin</Link>
+            )}
             {user ? (
               <>
                 <Link to="/settings" className="hidden max-w-[14rem] truncate font-mono text-xs text-ink-secondary hover:text-ink sm:inline" title={user.email}>

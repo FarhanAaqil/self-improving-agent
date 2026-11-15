@@ -43,6 +43,7 @@ from app.config import (
     RESULTS_DIR,
     SANDBOX_TIMEOUT,
 )
+from app.errors import init_error_tracking
 from app.generator import generate_code
 from app.jobs import recover_interrupted_runs, submit_run
 from app.memory import MemoryUnavailable
@@ -86,7 +87,9 @@ from app.single_instance import InstanceLock
 from app.startup import enforce_safe_startup
 
 logger = logging.getLogger("self_improving_agent")
+access_log = logging.getLogger("self_improving_agent.access")
 configure_logging()
+init_error_tracking()
 
 VERSION = "2.0.0"
 TERMINAL_STATUSES = {"success", "failed", "max_retries_exceeded", "early_stopped"}
@@ -108,6 +111,10 @@ async def lifespan(app: FastAPI):
         interrupted = recover_interrupted_runs()
         if interrupted:
             logger.warning("Marked %d interrupted run(s) as failed", interrupted)
+        from app.backup import scheduled_backup
+        from app.retention import add_chore
+
+        add_chore(scheduled_backup)
         maintenance.start()
         yield
     finally:
@@ -140,6 +147,7 @@ _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 # so the Accept header decides which one a request gets.
 _PAGE_ROUTE = re.compile(
     r"^/(|history|memory|eval|security|settings|login|signup|verify|forgot|reset|pricing|welcome|"
+    r"terms|privacy|acceptable-use|admin|"
     r"(runs|compare|shared)/[\w-]+)/?$"
 )
 
@@ -204,8 +212,18 @@ async def add_security_headers(request: Request, call_next):
         request_id.reset(token)
     route = request.scope.get("route")
     path = getattr(route, "path", "unmatched")
+    elapsed = time.monotonic() - started
     metrics.inc("agent_http_requests_total", method=request.method, route=path, status=str(response.status_code))
-    metrics.inc("agent_http_request_seconds_sum", time.monotonic() - started, route=path)
+    metrics.inc("agent_http_request_seconds_sum", elapsed, route=path)
+    if path not in ("/health", "unmatched") and not path.startswith("/assets"):
+        # The route template, never the raw URL: no query strings, ids stay as {run_id}
+        identity = getattr(request.state, "identity", None)
+        access_log.info(
+            "%s %s %s %dms", request.method, path, response.status_code, elapsed * 1000,
+            extra={"method": request.method, "path": path, "status_code": response.status_code,
+                   "duration_ms": round(elapsed * 1000), "user_id": getattr(identity, "user_id", None) or "-",
+                   "request_id_value": rid},
+        )
     response.headers["X-Request-ID"] = rid
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

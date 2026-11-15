@@ -129,8 +129,25 @@ DEMO_ENABLED = _flag("DEMO_ENABLED", "true")
 # Demo runs a visitor (per address) may start per 10 minutes, and at once across everyone
 DEMO_RUNS_PER_10_MIN = int(os.getenv("DEMO_RUNS_PER_10_MIN", "5"))
 DEMO_CONCURRENCY = int(os.getenv("DEMO_CONCURRENCY", "2"))
-# Expire lapsed plans, delete history past each plan's limit (and later, back up) this often
-MAINTENANCE_INTERVAL_HOURS = float(os.getenv("MAINTENANCE_INTERVAL_HOURS", "6"))
+# Expire lapsed plans, delete old history and take due backups this often
+MAINTENANCE_INTERVAL_HOURS = float(os.getenv("MAINTENANCE_INTERVAL_HOURS", "1"))
+
+# ── Production ───────────────────────────────────────────────
+# Accounts with these emails may use the admin page and operator endpoints from a browser
+ADMIN_EMAILS = {e.lower() for e in _csv("ADMIN_EMAILS")}
+# Backups of the database and memory (empty = off). The server writes one every
+# BACKUP_EVERY_HOURS and keeps the newest BACKUP_KEEP. Copy the folder off the machine.
+BACKUP_DIR = os.getenv("BACKUP_DIR", "")
+BACKUP_EVERY_HOURS = float(os.getenv("BACKUP_EVERY_HOURS", "24"))
+BACKUP_KEEP = int(os.getenv("BACKUP_KEEP", "14"))
+# Error tracking (optional). Never sends request bodies, cookies, keys or local variables.
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0"))
+RELEASE = os.getenv("RELEASE", "")
+# Accounts younger than a day: a tighter per-minute limit on spending endpoints
+NEW_ACCOUNT_RATE_LIMIT_PER_MINUTE = int(
+    os.getenv("NEW_ACCOUNT_RATE_LIMIT_PER_MINUTE", str(max(1, RATE_LIMIT_PER_MINUTE // 2) if RATE_LIMIT_PER_MINUTE else 0))
+)
 MAX_OUTPUT_CHARS = int(os.getenv("MAX_OUTPUT_CHARS", "65536"))
 ALLOWED_ORIGINS = _csv(
     "ALLOWED_ORIGINS",

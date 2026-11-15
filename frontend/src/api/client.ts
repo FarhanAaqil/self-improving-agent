@@ -3,6 +3,7 @@
 import { createSseParser } from '../lib/sse'
 import type {
   AccountUsage,
+  AdminUser,
   ApiKeyRecord,
   Plan,
   AttackInfo,
@@ -161,6 +162,16 @@ export async function downloadAccountExport(): Promise<void> {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// ── Admin (operator and ADMIN_EMAILS accounts) ──
+export const adminListUsers = (q = '') =>
+  request<{ items: AdminUser[]; total: number }>(`/admin/users?${new URLSearchParams({ q, page_size: '100' })}`)
+export const adminSetActive = (userId: string, active: boolean) =>
+  post<{ active: boolean }>(`/admin/users/${encodeURIComponent(userId)}/active`, { active })
+export const adminSetPlan = (userId: string, plan: string, days?: number) =>
+  post<{ plan: string }>(`/admin/users/${encodeURIComponent(userId)}/plan`, days ? { plan, days } : { plan })
+export const adminBackups = () => request<{ items: { name: string; bytes: number }[]; dir_configured: boolean }>('/admin/backups')
+export const adminBackupNow = () => post<{ archive: string }>('/admin/backup')
 
 export const getAccountUsage = () => request<AccountUsage>('/account/usage')
 export const getPlans = () => request<{ items: Plan[]; payments_enabled: boolean }>('/plans')

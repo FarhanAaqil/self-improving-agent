@@ -260,6 +260,22 @@ export interface AccountUsage {
   plans: Plan[]
 }
 
+export interface AdminUser {
+  user_id: string
+  email: string
+  plan: string
+  effective_plan: string
+  paid_until: string | null
+  active: boolean
+  verified: boolean
+  created_at: string
+  runs_total: number
+  runs_today: number
+  server_tokens_today: number
+  new_account: boolean
+  admin: boolean
+}
+
 export interface AccountUser {
   user_id: string
   email: string
