@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Command, KeyRound, Moon, Sun } from 'lucide-react'
+import { Command, LogOut, Moon, Sun } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { getStoredApiKey, getUsage, listRuns } from '../api/client'
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { getUsage, listRuns, logout } from '../api/client'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences } from '../hooks/usePreferences'
+import { useSession } from '../hooks/useSession'
 import BrandLogo from './BrandLogo'
 import { NAV_ITEMS } from './nav'
 import { Kbd, Meter } from './ui'
@@ -22,19 +23,26 @@ function useHotkey(handler: () => void) {
   }, [handler])
 }
 
-// Only needed once opened, so they stay out of the first download
-const ApiKeyDialog = lazy(() => import('./ApiKeyDialog'))
+// Only needed once opened, so it stays out of the first download
 const CommandPalette = lazy(() => import('./CommandPalette'))
+
+// Pages anyone may look at without an account
+const PUBLIC_PAGES = ['/eval', '/security']
 
 export default function AppShell() {
   const location = useLocation()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: health } = useHealth()
+  const { user, needsLogin, isLoading: sessionLoading } = useSession()
   const { isDark, update } = usePreferences()
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [keyOpen, setKeyOpen] = useState(false)
-  const [hasKey, setHasKey] = useState(() => Boolean(getStoredApiKey()))
-  const needsKey = health?.auth === 'key' && !hasKey
+  const needsKey = needsLogin
+  const signOut = async () => {
+    await logout().catch(() => undefined)
+    queryClient.clear()
+    navigate('/login')
+  }
 
   useHotkey(() => setPaletteOpen(true))
 
@@ -52,6 +60,10 @@ export default function AppShell() {
     refetchInterval: 15000,
     enabled: !needsKey && Boolean(health?.daily_token_budget),
   })
+
+  if (needsLogin && !sessionLoading && !PUBLIC_PAGES.includes(location.pathname)) {
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  }
 
   return (
     <div className="min-h-screen bg-canvas text-ink lg:flex">
@@ -132,16 +144,21 @@ export default function AppShell() {
               <Command className="h-3.5 w-3.5" aria-hidden />
               <Kbd>Ctrl K</Kbd>
             </button>
-            {health?.auth === 'key' && (
-              <button
-                type="button"
-                onClick={() => setKeyOpen(true)}
-                className={`btn px-2 py-1 ${needsKey ? 'border border-accent bg-accent-subtle text-accent-ink' : 'btn-ghost'}`}
-                aria-label={needsKey ? 'key needed: add API key' : 'key set: change API key'}
-              >
-                <KeyRound className="h-3.5 w-3.5" aria-hidden />
-                <span className="hidden sm:inline">{needsKey ? 'key needed' : 'key set'}</span>
-              </button>
+            {user ? (
+              <>
+                <Link to="/settings" className="hidden max-w-[14rem] truncate font-mono text-xs text-ink-secondary hover:text-ink sm:inline" title={user.email}>
+                  {user.email}
+                </Link>
+                <button type="button" onClick={signOut} className="btn-ghost px-2 py-1" aria-label="Log out">
+                  <LogOut className="h-3.5 w-3.5" aria-hidden />
+                  <span className="hidden sm:inline">log out</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn-ghost px-2 py-1 text-xs">log in</Link>
+                <Link to="/signup" className="btn-primary px-2.5 py-1 text-xs">sign up</Link>
+              </>
             )}
             <button
               type="button"
@@ -161,11 +178,8 @@ export default function AppShell() {
         )}
         {needsKey && (
           <div className="border-b border-accent/30 bg-accent-subtle px-4 py-2 text-sm text-accent-ink lg:px-6">
-            This server needs an API key.{' '}
-            <button type="button" className="font-semibold underline" onClick={() => setKeyOpen(true)}>
-              Add it
-            </button>{' '}
-            to start runs.
+            <Link to="/signup" className="font-semibold underline">Create a free account</Link> or{' '}
+            <Link to="/login" className="font-semibold underline">log in</Link> to start runs.
           </div>
         )}
 
@@ -193,16 +207,6 @@ export default function AppShell() {
 
       <Suspense fallback={null}>
         {paletteOpen && <CommandPalette open onClose={() => setPaletteOpen(false)} />}
-        {keyOpen && (
-          <ApiKeyDialog
-            open
-            onClose={() => setKeyOpen(false)}
-            onSaved={() => {
-              setHasKey(Boolean(getStoredApiKey()))
-              queryClient.invalidateQueries()
-            }}
-          />
-        )}
       </Suspense>
     </div>
   )

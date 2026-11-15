@@ -16,6 +16,11 @@ const Settings = lazy(() => import('./pages/Settings'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Compare = lazy(() => import('./pages/Compare'))
 const Shared = lazy(() => import('./pages/Shared'))
+const Login = lazy(() => import('./pages/auth/Login'))
+const Signup = lazy(() => import('./pages/auth/Signup'))
+const Verify = lazy(() => import('./pages/auth/Verify'))
+const Forgot = lazy(() => import('./pages/auth/Forgot'))
+const Reset = lazy(() => import('./pages/auth/Reset'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +48,11 @@ export default function App() {
         <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route path="/shared/:token" element={<Shared />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/verify" element={<Verify />} />
+            <Route path="/forgot" element={<Forgot />} />
+            <Route path="/reset" element={<Reset />} />
             <Route element={<AppShell />}>
               <Route path="/" element={<Workbench />} />
               <Route path="/runs/:runId" element={<RunTheater />} />

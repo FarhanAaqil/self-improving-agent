@@ -1,11 +1,11 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Monitor, Moon, Sun } from 'lucide-react'
+import { Monitor, Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
-import { getStoredApiKey, getStoredGroqKey, setStoredGroqKey } from '../api/client'
-import ApiKeyDialog from '../components/ApiKeyDialog'
+import { getStoredGroqKey, setStoredGroqKey } from '../api/client'
+import { ApiKeysPanel, ProfilePanel } from '../components/AccountPanels'
 import { PageHeader, Panel } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences, type Motion, type Theme } from '../hooks/usePreferences'
+import { useSession } from '../hooks/useSession'
 
 function Segmented<T extends string>({ value, options, onChange, label }: {
   value: T
@@ -35,15 +35,16 @@ function Segmented<T extends string>({ value, options, onChange, label }: {
 export default function Settings() {
   const { prefs, update } = usePreferences()
   const { data: health } = useHealth()
-  const qc = useQueryClient()
-  const [keyOpen, setKeyOpen] = useState(false)
-  const [hasKey, setHasKey] = useState(() => Boolean(getStoredApiKey()))
+  const { user } = useSession()
   const [groqKey, setGroqKey] = useState(() => getStoredGroqKey() ?? '')
   const [groqSaved, setGroqSaved] = useState(false)
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="settings" title="Make it yours" lede="These live in this browser only." />
+      <PageHeader eyebrow="settings" title="Make it yours" lede="Your account, keys and preferences. Appearance and run defaults live in this browser only." />
+
+      {user && <ProfilePanel user={user} />}
+      {user && <ApiKeysPanel />}
 
       <Panel title="appearance">
         <div className="space-y-5">
@@ -98,18 +99,11 @@ export default function Settings() {
         </div>
       </Panel>
 
-      <Panel title="access">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-ink-secondary">
-            {health?.auth === 'key'
-              ? hasKey ? 'An API key is saved for this tab.' : 'This server needs an API key.'
-              : health?.auth === 'open' ? 'This server is in local development mode and needs no key.' : 'This server has no key configured and refuses requests.'}
-          </div>
-          <button type="button" className="btn-secondary" onClick={() => setKeyOpen(true)}>
-            <KeyRound className="h-3.5 w-3.5" aria-hidden /> {hasKey ? 'change key' : 'add key'}
-          </button>
-        </div>
-      </Panel>
+      {!user && health?.auth === 'open' && (
+        <Panel title="access">
+          <p className="text-sm text-ink-secondary">This server is in local development mode, so it works without an account. Sign up to try accounts and API keys.</p>
+        </Panel>
+      )}
 
       {health?.byo_groq_key && (
         <Panel title="your own groq key">
@@ -136,15 +130,6 @@ export default function Settings() {
           </form>
         </Panel>
       )}
-
-      <ApiKeyDialog
-        open={keyOpen}
-        onClose={() => setKeyOpen(false)}
-        onSaved={() => {
-          setHasKey(Boolean(getStoredApiKey()))
-          qc.invalidateQueries()
-        }}
-      />
     </div>
   )
 }

@@ -227,13 +227,37 @@ export interface HealthResponse {
   docker_available: boolean
   demo_mode?: boolean
   github_configured?: boolean
-  auth?: 'key' | 'open' | 'locked'
+  auth?: 'open' | 'accounts'
+  signups_open?: boolean
   code_override_enabled?: boolean
   memory_enabled?: boolean
   byo_groq_key?: boolean
   daily_token_budget?: number
   models?: string[]
   default_model?: string
+}
+
+export interface AccountUser {
+  user_id: string
+  email: string
+  email_verified: boolean
+  created_at?: string
+}
+
+export interface Me {
+  user: AccountUser | null
+  csrf_token: string | null
+  auth: 'open' | 'accounts'
+  signups_open: boolean
+}
+
+export interface ApiKeyRecord {
+  key_id: string
+  name: string
+  prefix: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
 }
 
 export interface SandboxConfig {

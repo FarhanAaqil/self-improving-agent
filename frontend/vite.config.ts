@@ -2,7 +2,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 const API = 'http://127.0.0.1:8000'
-const proxied = ['/health', '/models', '/sandbox', '/generate', '/execute', '/runs', '/eval', '/memory', '/compare', '/shared', '/usage', '/stats', '/metrics']
+const proxied = ['/health', '/models', '/sandbox', '/generate', '/execute', '/runs', '/eval', '/memory', '/compare', '/shared', '/usage', '/stats', '/metrics', '/auth', '/account']
 
 // https://vite.dev/config/
 export default defineConfig({

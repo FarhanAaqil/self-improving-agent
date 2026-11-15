@@ -93,6 +93,8 @@ jobs:
       APP_ENV: development
       MEMORY_ENABLED: "false"
       RATE_LIMIT_PER_MINUTE: "0"
+      AUTH_RATE_LIMIT_PER_MINUTE: "0"
+      MAIL_OUTBOX_DIR: ${{ github.workspace }}/mail-outbox
       E2E_BASE_URL: http://127.0.0.1:8000
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
