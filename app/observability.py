@@ -11,6 +11,8 @@ from collections import defaultdict
 from app.config import LOG_FORMAT
 
 request_id: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+# The signed-in account serving this request, for log lines (never emails, keys or code)
+user_id: contextvars.ContextVar[str] = contextvars.ContextVar("user_id", default="-")
 
 
 class JsonFormatter(logging.Formatter):
@@ -20,7 +22,8 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname.lower(),
             "logger": record.name,
             "msg": record.getMessage(),
-            "request_id": request_id.get(),
+            "request_id": getattr(record, "request_id_value", None) or request_id.get(),
+            "user_id": getattr(record, "user_id", None) or user_id.get(),
         }
         for key in ("run_id", "workspace", "status", "duration_ms", "path", "method", "status_code"):
             if hasattr(record, key):

@@ -54,6 +54,11 @@ class Identity:
     def user_id(self) -> str | None:
         return self.user["user_id"] if self.user else None
 
+    @property
+    def is_admin(self) -> bool:
+        """The operator, or an account whose email is in ADMIN_EMAILS."""
+        return self.is_operator or bool(self.user and self.user.get("email", "").lower() in config.ADMIN_EMAILS)
+
 
 def configured_api_key() -> str | None:
     key = (config.API_KEY or "").strip()
@@ -123,7 +128,7 @@ def identify(request: Request, provided_key: str | None) -> Identity | None:
     return None
 
 
-def verify_api_access(
+async def verify_api_access(
     request: Request,
     header_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
@@ -141,6 +146,12 @@ def verify_api_access(
         identity = Identity(workspace=DEFAULT_WORKSPACE, via="open")
     request.state.identity = identity
     request.state.workspace = identity.workspace
+    if identity.user_id:
+        from app.errors import tag_user
+        from app.observability import user_id
+
+        user_id.set(identity.user_id)  # async dependency: the endpoint inherits it
+        tag_user(identity.user_id)
     return True
 
 
@@ -162,7 +173,7 @@ def require_user(request: Request) -> dict[str, Any]:
 
 def require_operator(request: Request) -> Identity:
     identity = identity_of(request)
-    if not identity.is_operator:
+    if not identity.is_admin:
         raise HTTPException(status_code=403, detail="Only the server operator can do this.")
     return identity
 
@@ -215,6 +226,8 @@ class RateLimiter:
 
 
 limiter = RateLimiter(config.RATE_LIMIT_PER_MINUTE)
+# Accounts younger than a day get a tighter limit on top (abuse control)
+new_account_limiter = RateLimiter(config.NEW_ACCOUNT_RATE_LIMIT_PER_MINUTE)
 # Account endpoints: per client address, and per email address over a longer window
 auth_limiter = RateLimiter(config.AUTH_RATE_LIMIT_PER_MINUTE)
 email_limiter = RateLimiter(max(1, config.AUTH_RATE_LIMIT_PER_MINUTE // 2) if config.AUTH_RATE_LIMIT_PER_MINUTE else 0, 900)
@@ -234,3 +247,9 @@ def _client_id(request: Request) -> str:
 def rate_limited(request: Request) -> None:
     """Dependency for endpoints that spend LLM tokens or sandbox time (after verify_api_access)."""
     limiter.check(_client_id(request))
+    identity = getattr(request.state, "identity", None)
+    if identity is not None and identity.user is not None:
+        from app.plans import is_new_account
+
+        if is_new_account(identity.user):
+            new_account_limiter.check(_client_id(request))

@@ -33,6 +33,19 @@ _FIELD_LIMITS = {"task": 400, "code": 1200, "error": 600, "lesson": 600}
 _client: Any = None
 _collection: Any = None
 _init_lock = threading.Lock()
+# Held by every write, and by backups while they copy the store, so a backup never
+# catches a half-written memory
+write_lock = threading.RLock()
+
+
+def _writes(fn):
+    def wrapper(*args, **kwargs):
+        with write_lock:
+            return fn(*args, **kwargs)
+
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
 
 
 def _trim(text: str | None, limit: int) -> str:
@@ -89,6 +102,7 @@ def _get_collection(collection_override=None):
     return _collection
 
 
+@_writes
 def _add(kind: str, task: str, error: str, code: str = "", lesson: str = "",
          workspace: str = "default", collection=None) -> str:
     coll = _get_collection(collection)
@@ -193,6 +207,7 @@ def retrieve_similar_failures(
     return memories
 
 
+@_writes
 def mark_used(memory_ids: list[str], collection=None) -> None:
     """Bump the usage counter of recalled memories (best effort)."""
     ids = [i for i in memory_ids if i]
@@ -270,6 +285,7 @@ def _owned(got: dict, workspace: str | None) -> bool:
     return workspace is None or got["metadatas"][0].get("workspace", "default") == workspace
 
 
+@_writes
 def delete_memory(memory_id: str, collection=None, workspace: str | None = None) -> bool:
     coll = _get_collection(collection)
     if not _owned(coll.get(ids=[memory_id], include=["metadatas"]), workspace):
@@ -278,6 +294,7 @@ def delete_memory(memory_id: str, collection=None, workspace: str | None = None)
     return True
 
 
+@_writes
 def set_pinned(memory_id: str, pinned: bool, collection=None, workspace: str | None = None) -> bool:
     coll = _get_collection(collection)
     got = coll.get(ids=[memory_id], include=["metadatas"])
@@ -287,6 +304,7 @@ def set_pinned(memory_id: str, pinned: bool, collection=None, workspace: str | N
     return True
 
 
+@_writes
 def delete_workspace(workspace: str, collection=None) -> int:
     """Forget everything a workspace taught the agent (account deletion). Returns how many."""
     if not workspace:
@@ -311,6 +329,7 @@ def memory_stats(collection=None, workspace: str | None = None) -> dict[str, Any
     }
 
 
+@_writes
 def clear_memory(collection=None) -> None:
     """Wipe all stored memories. Use with caution."""
     global _collection
