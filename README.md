@@ -91,7 +91,7 @@ Executing untrusted, model-generated code on the host filesystem is dangerous. I
 | **No Host Paths** | code piped over stdin (`python -`) | Nothing from the host filesystem is mounted into the container |
 | **Host-Side Termination**| `subprocess.run(..., timeout=10)` + `docker kill` | Host daemon forcefully terminates hanging processes regardless of in-script signal masks |
 
-If Docker is not available the API **refuses to execute** instead of falling back to the host. API access is **fail-closed**: outside `APP_ENV=development`, every endpoint except `/health` requires `API_KEY`.
+If Docker is not available the API **refuses to execute** instead of falling back to the host. API access is **fail-closed**: outside `APP_ENV=development`, every private endpoint needs a signed-in account or an API key.
 
 ### Adversarial Test Suite
 The security perimeter is guarded by 8 real attacks in `tests/fixtures/adversarial/`, executed in CI against a live Docker daemon. A test passes only when the attack is visibly stopped:
@@ -248,8 +248,14 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 |---|---|---|
 | `GROQ_API_KEY` | — | Server-side Groq key |
 | `APP_ENV` | `production` | `development` keeps the API open without a key; anything else fails closed and refuses to start in an unsafe configuration |
-| `API_KEY` | — | Key for the `default` workspace |
-| `API_KEYS` | — | More workspaces: `alice:key1,team-b:key2`. Each sees only its own runs and memory |
+| `API_KEY` | — | Operator key for the `default` workspace (an admin fallback next to accounts) |
+| `API_KEYS` | — | More operator workspaces: `alice:key1,team-b:key2`. Each sees only its own runs and memory |
+| `PUBLIC_BASE_URL` | `http://localhost:8000` | The public address, used in links inside emails |
+| `SIGNUPS_OPEN` | `true` | Whether new people can create accounts |
+| `OPEN_DEV_ACCESS` | `true` | In development without keys, use the app without an account |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_STARTTLS`, `MAIL_FROM` | — | Email for verification and password resets. Unset in development: links are printed to the log |
+| `SESSION_TTL_DAYS` | `14` | How long a browser stays signed in |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | `10` | Sign-up, login and reset attempts per client per minute (and a tighter limit per email) |
 | `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
 | `ALLOW_BYO_GROQ_KEY` | `true` | Callers may send `X-Groq-Key`; used for that run only, never stored |
 | `DAILY_TOKEN_BUDGET` | `0` (off) | Per-workspace daily token cap; new runs get `429` once spent |
@@ -269,11 +275,16 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 
 ## 7. API Reference
 
-Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside `APP_ENV=development`, everything that touches runs, memory, usage or spends tokens needs a key. Read-only status (`/health`, `/models`, `/sandbox/config`, the attack list), published benchmark results (`GET /eval/*`) and share links (`/shared/*`) are public.
+Interactive OpenAPI docs live at `http://localhost:8000/docs`. Outside local development, everything that touches runs, memory, usage or spends tokens needs a signed-in session (browsers; writes also send the `X-CSRF-Token` from `/auth/me`) or an API key (`X-API-Key` or `Authorization: Bearer`). Each account has its own private workspace. Read-only status (`/health`, `/models`, `/sandbox/config`, the attack list), published benchmark results (`GET /eval/*`) and share links (`/shared/*`) are public.
 
 | Method | Route | Description |
 |---|---|---|
 | `GET` | `/health`, `/models`, `/sandbox/config` | Status, available models, the exact sandbox command |
+| `POST` | `/auth/signup`, `/auth/verify`, `/auth/login`, `/auth/logout` | Accounts: sign up, confirm the email link, log in and out (session cookie) |
+| `POST` | `/auth/forgot`, `/auth/reset`, `/auth/resend-verification` | Password reset and a fresh confirmation link; the answer never reveals whether an email exists |
+| `GET` | `/auth/me` | The signed-in account and its CSRF token |
+| `GET`/`POST`/`DELETE` | `/account/keys` | Your API keys for scripts: create (shown once), list, revoke |
+| `POST` | `/account/password` | Change your password (signs out your other devices) |
 | `POST` | `/runs` | Start the full loop in the background (202, returns `run_id`) |
 | `GET` | `/runs/{id}/events` | Server-sent events for every step, resumable with `Last-Event-ID` |
 | `GET` | `/runs`, `/runs/{id}` | Paginated summaries (`page`, `q`, `status`) and full run detail |

@@ -25,7 +25,8 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 
-from app import db, llm
+from app import config, db, llm
+from app.auth_routes import router as auth_router
 from app.certificate import badge_svg, build_certificate
 from app.config import (
     ALLOW_BYO_GROQ_KEY,
@@ -98,19 +99,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(auth_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,  # auth is header-based; cookies are never needed
+    # Browsers sign in with a same-origin session cookie; cross-origin callers use API keys
+    allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "X-API-Key", "Authorization", "Last-Event-ID"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization", "Last-Event-ID", "X-CSRF-Token", "X-Groq-Key"],
 )
 
 
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 # Pages of the React app. Several share their path with an API route (/runs/{id}, /memory),
 # so the Accept header decides which one a request gets.
-_PAGE_ROUTE = re.compile(r"^/(|history|memory|eval|security|settings|(runs|compare|shared)/[\w-]+)/?$")
+_PAGE_ROUTE = re.compile(
+    r"^/(|history|memory|eval|security|settings|login|signup|verify|forgot|reset|(runs|compare|shared)/[\w-]+)/?$"
+)
 
 
 def _wants_app_shell(request: Request) -> bool:
@@ -152,7 +158,8 @@ def _cache_policy(request: Request) -> str | None:
     if path.startswith(_REVALIDATE_PATHS):
         return "no-cache"  # may be stored, but must be revalidated (cheap thanks to the ETag)
     if path.startswith(
-        ("/generate", "/execute", "/runs", "/eval", "/memory", "/compare", "/shared", "/usage", "/stats", "/metrics")
+        ("/generate", "/execute", "/runs", "/eval", "/memory", "/compare", "/shared", "/usage", "/stats", "/metrics",
+         "/auth", "/account")
     ):
         return "no-store, max-age=0"  # private run data is never written to disk caches
     return None
@@ -265,6 +272,7 @@ def health_check():
         "demo_mode": DEMO_MODE,
         "github_configured": IS_GITHUB_CONFIGURED,
         "auth": auth_mode(),
+        "signups_open": config.SIGNUPS_OPEN,
         "code_override_enabled": ALLOW_CODE_OVERRIDE,
         "memory_enabled": MEMORY_ENABLED,
         "byo_groq_key": ALLOW_BYO_GROQ_KEY,

@@ -2,7 +2,9 @@
 
 import { createSseParser } from '../lib/sse'
 import type {
+  ApiKeyRecord,
   AttackInfo,
+  Me,
   AttackResult,
   EvalResultOut,
   EvalRunOut,
@@ -30,8 +32,15 @@ import type {
 } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
-const API_KEY_STORAGE = 'agent_api_key'
 const GROQ_KEY_STORAGE = 'agent_groq_key'
+
+// Browsers sign in with an httpOnly session cookie the page can't read. Writes also carry
+// this CSRF token, which only our own pages can learn (from /auth/me or the login reply).
+let csrfToken: string | null = null
+
+export function setCsrfToken(token: string | null | undefined): void {
+  csrfToken = token ?? null
+}
 
 export class ApiError extends Error {
   status: number
@@ -45,25 +54,8 @@ export class ApiError extends Error {
   }
 }
 
-// The key lives in sessionStorage only: never baked into the bundle, gone when the tab closes.
-export function getStoredApiKey(): string | null {
-  try {
-    return sessionStorage.getItem(API_KEY_STORAGE)
-  } catch {
-    return null
-  }
-}
-
-export function setStoredApiKey(key: string | null): void {
-  try {
-    if (key) sessionStorage.setItem(API_KEY_STORAGE, key)
-    else sessionStorage.removeItem(API_KEY_STORAGE)
-  } catch {
-    // storage blocked (private mode); the key just won't persist
-  }
-}
-
-// The caller's own Groq key, if they chose to bring one. Session-only, like the API key.
+// The caller's own Groq key, if they chose to bring one. sessionStorage only: never sent to
+// the server except as a header on each request, and gone when the tab closes.
 export function getStoredGroqKey(): string | null {
   try {
     return sessionStorage.getItem(GROQ_KEY_STORAGE)
@@ -82,24 +74,24 @@ export function setStoredGroqKey(key: string | null): void {
 }
 
 export function isAuthError(err: unknown): boolean {
-  return err instanceof ApiError && (err.status === 401 || err.status === 503)
+  return err instanceof ApiError && err.status === 401
 }
 
-function authHeaders(): Record<string, string> {
+function authHeaders(method = 'GET'): Record<string, string> {
   const headers: Record<string, string> = {}
-  const apiKey = getStoredApiKey()
   const groqKey = getStoredGroqKey()
-  if (apiKey) headers['X-API-Key'] = apiKey
   if (groqKey) headers['X-Groq-Key'] = groqKey
+  if (method !== 'GET' && csrfToken) headers['X-CSRF-Token'] = csrfToken
   return headers
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...authHeaders(),
+      ...authHeaders(options.method ?? 'GET'),
       ...((options.headers as Record<string, string>) || {}),
     },
   })
@@ -119,6 +111,42 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 const post = <T>(endpoint: string, body?: unknown) =>
   request<T>(endpoint, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+
+const del = <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' })
+
+// ── Accounts ──
+export async function getMe(): Promise<Me> {
+  const me = await request<Me>('/auth/me')
+  setCsrfToken(me.csrf_token)
+  return me
+}
+export async function login(email: string, password: string) {
+  const res = await post<{ user: Me['user']; csrf_token: string }>('/auth/login', { email, password })
+  setCsrfToken(res.csrf_token)
+  return res
+}
+export async function verifyEmail(token: string) {
+  const res = await post<{ user: Me['user']; csrf_token: string }>('/auth/verify', { token })
+  setCsrfToken(res.csrf_token)
+  return res
+}
+export async function logout() {
+  const res = await post<{ logged_out: boolean }>('/auth/logout')
+  setCsrfToken(null)
+  return res
+}
+export const signup = (email: string, password: string) => post<{ message: string }>('/auth/signup', { email, password })
+export const resendVerification = (email: string) => post<{ message: string }>('/auth/resend-verification', { email })
+export const forgotPassword = (email: string) => post<{ message: string }>('/auth/forgot', { email })
+export const resetPassword = (token: string, password: string) => post<{ message: string }>('/auth/reset', { token, password })
+export async function changePassword(current_password: string, new_password: string) {
+  const res = await post<{ changed: boolean; csrf_token: string }>('/account/password', { current_password, new_password })
+  setCsrfToken(res.csrf_token)
+  return res
+}
+export const listApiKeys = () => request<{ items: ApiKeyRecord[] }>('/account/keys')
+export const createApiKey = (name: string) => post<{ key: string; record: ApiKeyRecord; message: string }>('/account/keys', { name })
+export const revokeApiKey = (keyId: string) => del<{ revoked: string }>(`/account/keys/${encodeURIComponent(keyId)}`)
 
 // ── System ──
 export const getHealth = () => request<HealthResponse>('/health')
@@ -154,6 +182,7 @@ export async function streamRunEvents(
   options: { signal?: AbortSignal; lastEventId?: number } = {},
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/runs/${encodeURIComponent(runId)}/events`, {
+    credentials: 'same-origin',
     headers: {
       Accept: 'text/event-stream',
       ...authHeaders(),

@@ -6,6 +6,7 @@ import { diffLines, diffStats } from '../src/lib/diff.ts'
 import { tokenize, tokenizeLines } from '../src/lib/highlight.ts'
 import { deriveStages, narrate } from '../src/lib/narrate.ts'
 import { createSseParser, type SseMessage } from '../src/lib/sse.ts'
+import { safeNext } from '../src/lib/redirect.ts'
 
 describe('sse parser', () => {
   test('parses events split across arbitrary chunks', () => {
@@ -100,5 +101,15 @@ describe('narration', () => {
     const stages = Object.fromEntries(deriveStages(events).map((s) => [s.id, s.state]))
     assert.equal(stages.verify, 'failed')
     assert.equal(stages.spec, 'skipped')
+  })
+})
+
+describe('login redirect', () => {
+  test('only ever returns to a page on this site', () => {
+    assert.equal(safeNext('/runs/run_1?tab=diff'), '/runs/run_1?tab=diff')
+    assert.equal(safeNext(null), '/')
+    assert.equal(safeNext('https://evil.example'), '/')
+    assert.equal(safeNext('//evil.example/path'), '/')
+    assert.equal(safeNext('/\\evil.example'), '/')
   })
 })
