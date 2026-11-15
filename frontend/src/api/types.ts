@@ -248,6 +248,16 @@ export interface Plan {
   server_token_budget: number
 }
 
+export interface AccountUsage {
+  plan: Plan
+  paid_until: string | null
+  new_account: boolean
+  limits: { runs_per_day: number; concurrent_runs: number; history_days: number; server_token_budget: number }
+  usage: { runs_today: number; server_tokens_today: number; running: number; queued: number }
+  upgrade_url: string | null
+  plans: Plan[]
+}
+
 export interface AccountUser {
   user_id: string
   email: string

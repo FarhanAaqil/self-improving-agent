@@ -2,7 +2,9 @@
 
 import { createSseParser } from '../lib/sse'
 import type {
+  AccountUsage,
   ApiKeyRecord,
+  Plan,
   AttackInfo,
   Me,
   AttackResult,
@@ -144,6 +146,8 @@ export async function changePassword(current_password: string, new_password: str
   setCsrfToken(res.csrf_token)
   return res
 }
+export const getAccountUsage = () => request<AccountUsage>('/account/usage')
+export const getPlans = () => request<{ items: Plan[]; payments_enabled: boolean }>('/plans')
 export const listApiKeys = () => request<{ items: ApiKeyRecord[] }>('/account/keys')
 export const createApiKey = (name: string) => post<{ key: string; record: ApiKeyRecord; message: string }>('/account/keys', { name })
 export const revokeApiKey = (keyId: string) => del<{ revoked: string }>(`/account/keys/${encodeURIComponent(keyId)}`)

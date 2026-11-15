@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from app import accounts, config, mailer, plans
+from app import accounts, billing, config, db, mailer, plans
 from app.security import (
     auth_limiter,
     auth_mode,
@@ -250,6 +250,41 @@ def change_password(body: PasswordChange, request: Request, response: Response):
     accounts.end_all_sessions(user["user_id"])
     csrf = _start_session(response, user["user_id"])  # keep this browser signed in
     return {"changed": True, "csrf_token": csrf}
+
+
+@router.get("/account/usage", dependencies=[Depends(verify_api_access)])
+def account_usage(request: Request):
+    """The caller's plan, its limits, and how much of them is used today."""
+    from app.jobs import scheduler
+
+    user = require_user(request)
+    plan = plans.plan_for(user)
+    workspace = user["workspace"]
+    return {
+        "plan": plan.public(),
+        "paid_until": user.get("paid_until") if plan.name != plans.DEFAULT_PLAN else None,
+        "new_account": plans.is_new_account(user),
+        "limits": {
+            "runs_per_day": plans.runs_per_day(user),
+            "concurrent_runs": plan.concurrent_runs,
+            "history_days": plan.history_days,
+            "server_token_budget": plan.server_token_budget,
+        },
+        "usage": {
+            "runs_today": db.runs_started_today(workspace),
+            "server_tokens_today": db.server_tokens_today(workspace),
+            "running": scheduler.running(workspace),
+            "queued": scheduler.queued(workspace),
+        },
+        "upgrade_url": billing.payment_link(user) if plan.name == plans.DEFAULT_PLAN else None,
+        "plans": [p.public() for p in plans.PLANS.values()],
+    }
+
+
+@router.get("/plans")
+def list_plans():
+    """Public: what each plan includes, for the pricing page."""
+    return {"items": [p.public() for p in plans.PLANS.values()], "payments_enabled": billing.payments_enabled()}
 
 
 @router.get("/account/keys", dependencies=[Depends(verify_api_access)])

@@ -2,6 +2,7 @@ import { Monitor, Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { getStoredGroqKey, setStoredGroqKey } from '../api/client'
 import { ApiKeysPanel, ProfilePanel } from '../components/AccountPanels'
+import PlanPanel from '../components/PlanPanel'
 import { PageHeader, Panel } from '../components/ui'
 import { useHealth } from '../hooks/useHealth'
 import { usePreferences, type Motion, type Theme } from '../hooks/usePreferences'
@@ -44,6 +45,7 @@ export default function Settings() {
       <PageHeader eyebrow="settings" title="Make it yours" lede="Your account, keys and preferences. Appearance and run defaults live in this browser only." />
 
       {user && <ProfilePanel user={user} />}
+      {user && <PlanPanel />}
       {user && <ApiKeysPanel />}
 
       <Panel title="appearance">

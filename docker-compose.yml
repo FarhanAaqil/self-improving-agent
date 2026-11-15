@@ -76,6 +76,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
       - MAIL_FROM=${MAIL_FROM:-}
+      - PAYMENT_LINK_URL=${PAYMENT_LINK_URL:-}
     volumes:
       - agent_data:/data
     networks:

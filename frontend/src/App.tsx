@@ -21,6 +21,7 @@ const Signup = lazy(() => import('./pages/auth/Signup'))
 const Verify = lazy(() => import('./pages/auth/Verify'))
 const Forgot = lazy(() => import('./pages/auth/Forgot'))
 const Reset = lazy(() => import('./pages/auth/Reset'))
+const Pricing = lazy(() => import('./pages/Pricing'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/eval" element={<Benchmarks />} />
               <Route path="/security" element={<Security />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/pricing" element={<Pricing />} />
               <Route path="/compare/:groupId" element={<Compare />} />
               <Route path="*" element={<NotFound />} />
             </Route>
