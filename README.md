@@ -13,7 +13,7 @@
 ![Docker](https://img.shields.io/badge/Sandbox-Docker-2496ED?style=flat&logo=docker&logoColor=white)
 ![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Qwen3%20%2F%20gpt--oss-F55036?style=flat)
 ![ChromaDB](https://img.shields.io/badge/Memory-ChromaDB-orange?style=flat)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
 ---
 
@@ -202,7 +202,7 @@ Official HumanEval, 40 problems, `qwen/qwen3.8-27b`, run 2026-11-02 in the Docke
 ```bash
 git clone https://github.com/FarhanAaqil/self-improving-agent.git
 cd self-improving-agent
-FAKE_LLM=true docker compose up --build
+APP_ENV=development FAKE_LLM=true docker compose up --build
 # open http://localhost:8000 and ask for: Write add(a, b) returning the sum
 ```
 
@@ -214,6 +214,22 @@ docker compose up --build     # http://localhost:8000
 ```
 
 The API container runs as a non-root user and reaches Docker only through a socket proxy that refuses exec, volumes, networks, builds and system calls.
+
+**Safe by default.** With no `.env` at all, Compose starts in `production`: every protected endpoint needs `API_KEY`, and the port is published on `127.0.0.1` only, so nothing is reachable from other machines. `.env.example` switches to `development` for local use.
+
+### Running it on a server
+
+1. Copy `.env.example` to `.env` and set `APP_ENV=production`, a long random `API_KEY` and `GROQ_API_KEY`.
+2. `docker compose up -d --build`. The app listens on `127.0.0.1:8000`.
+3. Put a reverse proxy in front for the domain and TLS. With Caddy it is two lines:
+
+```
+your-domain.example {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+In production the server **refuses to start** if `ALLOW_UNSAFE_HOST_SUBPROCESS` or `ALLOW_CODE_OVERRIDE` is on, or if Docker can't be reached within `DOCKER_STARTUP_WAIT_SECONDS` (default 30). This app is single-instance by design: one process owns one data directory.
 
 ### Local development
 
@@ -231,7 +247,7 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 | Variable | Default | What it does |
 |---|---|---|
 | `GROQ_API_KEY` | — | Server-side Groq key |
-| `APP_ENV` | `production` | `development` keeps the API open without a key; anything else fails closed |
+| `APP_ENV` | `production` | `development` keeps the API open without a key; anything else fails closed and refuses to start in an unsafe configuration |
 | `API_KEY` | — | Key for the `default` workspace |
 | `API_KEYS` | — | More workspaces: `alice:key1,team-b:key2`. Each sees only its own runs and memory |
 | `MODEL` / `AVAILABLE_MODELS` | `qwen/qwen3.8-27b` | Default model and the allowlist the UI offers |
@@ -245,8 +261,9 @@ npm --prefix frontend ci && npm --prefix frontend run dev   # UI with hot reload
 | `FAKE_LLM` | `false` | Offline demo / end-to-end test mode |
 | `LOG_FORMAT` | `text` | `json` for structured logs with request ids |
 | `SANDBOX_TIMEOUT`, `SANDBOX_MEMORY`, `SANDBOX_PIDS` | `10`, `256m`, `64` | Sandbox limits |
-| `ALLOW_UNSAFE_HOST_SUBPROCESS` | `false` | Runs code on the host if Docker is missing. Never on a shared server |
-| `ALLOW_CODE_OVERRIDE` | `false` | Lets `/execute` run caller-supplied code |
+| `ALLOW_UNSAFE_HOST_SUBPROCESS` | `false` | Runs code on the host if Docker is missing. Development only: production refuses to start with it on |
+| `ALLOW_CODE_OVERRIDE` | `false` | Lets `/execute` run caller-supplied code. Development only: production refuses to start with it on |
+| `DOCKER_STARTUP_WAIT_SECONDS` | `30` | How long a production server waits at boot for Docker or the socket proxy |
 
 ---
 
