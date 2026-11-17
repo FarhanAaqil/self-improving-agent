@@ -20,6 +20,9 @@ os.environ["MEMORY_ENABLED"] = "false"
 os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ.pop("API_KEY", None)
+# A developer's .env may lock down access or name admins; the suite expects the defaults
+os.environ["OPEN_DEV_ACCESS"] = "true"
+os.environ["ADMIN_EMAILS"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

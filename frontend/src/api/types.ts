@@ -243,6 +243,7 @@ export interface Plan {
   name: string
   label: string
   price: string
+  price_note?: string
   runs_per_day: number
   concurrent_runs: number
   history_days: number

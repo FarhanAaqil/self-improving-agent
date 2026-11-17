@@ -27,6 +27,8 @@ class Plan:
     server_key: bool
     # Tokens per day (server time) that runs on the server's key may spend
     server_token_budget: int
+    # Shown under the price, e.g. the yearly option
+    price_note: str = ""
 
     def public(self) -> dict[str, Any]:
         return asdict(self)
@@ -46,12 +48,15 @@ PLANS: dict[str, Plan] = {
     "pro": Plan(
         name="pro",
         label="Pro",
-        price="$9 / month",
+        price="$12 / month",
         runs_per_day=300,
         concurrent_runs=3,
         history_days=365,
         server_key=True,
-        server_token_budget=300_000,
+        # A typical run is ~4k tokens, so ~25 runs a day on our key. At Groq's price for the
+        # dearest default model this keeps even a maxed-out Pro account below its $12
+        server_token_budget=100_000,
+        price_note="or $120 / year (two months free)",
     ),
 }
 
