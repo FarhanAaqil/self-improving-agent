@@ -46,6 +46,7 @@ export default function Pricing() {
                   {current === plan.name && <span className="chip border-status-success/40 bg-status-success-subtle text-status-success">your plan</span>}
                 </div>
                 <div className="mt-2 font-mono text-3xl font-bold">{plan.price}</div>
+                {plan.price_note && <div className="mt-1 text-xs text-ink-muted">{plan.price_note}</div>}
                 <ul className="mt-5 flex-1 space-y-2 text-sm">
                   {features(plan).map((f) => (
                     <li key={f} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-status-success" aria-hidden />{f}</li>
